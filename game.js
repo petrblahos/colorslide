@@ -3,7 +3,7 @@
   'use strict';
 
   // ---------- Constants ----------
-  const RADIUS = 3;            // hex board radius (37 cells)
+  const RADIUS = 2;            // hex board radius (19 cells, 5 across)
   const CLEAR_AT = 10;         // tiles of one color needed to clear
   const Y_SCALE = 0.72;        // vertical squash for a tilted look
   const TILE_H = 0.17;         // tile thickness relative to hex size
@@ -81,7 +81,7 @@
       }
     }
     // a few random blocked cells (never the center)
-    const nBlocked = randInt(0, 4);
+    const nBlocked = randInt(0, 2);
     const pool = cells.filter((c) => !(c.q === 0 && c.r === 0));
     for (let i = 0; i < nBlocked; i++) pool.splice(rand(pool.length), 1)[0].blocked = true;
     drawOrder = cells.slice().sort((a, b) => (a.r + a.q / 2) - (b.r + b.q / 2) || a.q - b.q);
@@ -256,7 +256,7 @@
     canvas.height = Math.round(L.h * L.dpr);
     const halfBoard = RADIUS * SQ3 * Y_SCALE + SQ3 / 2 * Y_SCALE; // in units of s
     const totalH = 1.6 + 2 * halfBoard + 1.0 + 2.6 + 0.6;
-    const s = Math.max(8, Math.min(L.w / 12.4, L.h / totalH));
+    const s = Math.max(8, Math.min(L.w / (RADIUS * 3 + 3.4), L.h / totalH));
     L.s = s;
     const used = totalH * s;
     const top0 = (L.h - used) / 2;
