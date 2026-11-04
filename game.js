@@ -8,6 +8,7 @@
   const Y_SCALE = 0.72;        // vertical squash for a tilted look
   const TILE_H = 0.17;         // tile thickness relative to hex size
   const TILE_R = 0.9;          // tile radius relative to cell size
+  const CORNER_ROUND = 0.2;    // hexagon corner rounding relative to radius
   const FLY_MS = 260;          // tile flight duration
   const STAGGER_MS = 60;       // delay between tiles in a transfer
   const POP_MS = 320;
@@ -272,12 +273,19 @@
   }
 
   // ---------- Drawing ----------
-  function hexPath(x, y, r, rot = 0) {
-    ctx.beginPath();
+  // Hexagon outline with rounded corners (corner radius is a fraction of r).
+  function hexPath(x, y, r, rot = 0, round = CORNER_ROUND) {
+    const pts = [];
     for (let i = 0; i < 6; i++) {
       const a = Math.PI / 3 * i + rot;
-      const px = x + r * Math.cos(a), py = y + r * Math.sin(a) * Y_SCALE;
-      if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+      pts.push([x + r * Math.cos(a), y + r * Math.sin(a) * Y_SCALE]);
+    }
+    const cr = r * round;
+    ctx.beginPath();
+    ctx.moveTo((pts[5][0] + pts[0][0]) / 2, (pts[5][1] + pts[0][1]) / 2);
+    for (let i = 0; i < 6; i++) {
+      const p = pts[i], n = pts[(i + 1) % 6];
+      ctx.arcTo(p[0], p[1], n[0], n[1], cr);
     }
     ctx.closePath();
   }
