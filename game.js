@@ -406,8 +406,7 @@
         ctx.lineWidth = Math.max(1.5, s * (on ? 0.07 : 0.045));
         ctx.stroke();
       }
-      // snap: over a free cell the stack sits on that cell instead of following the pointer
-      if (hover) { const p = cellPos(hover); drawStack(p.x, p.y, drag.stack); }
+      if (hover) { const p = cellPos(hover); drawStack(p.x, p.y, drag.stack, 0.45, false); }
     }
 
     // popping tiles (cleared)
@@ -458,7 +457,7 @@
     }
 
     // dragged stack
-    if (drag && !hover) drawStack(drag.x, drag.y, drag.stack, 0.95);
+    if (drag) drawStack(drag.x, drag.y, drag.stack, 0.95);
 
     requestAnimationFrame(render);
   }
