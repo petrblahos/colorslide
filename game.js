@@ -395,7 +395,7 @@
     if (fade) {
       ctx.save();
       ctx.setTransform(1, 0, 0, 1, 0, 0);
-      ctx.globalAlpha = 0.3;
+      ctx.globalAlpha = 0.5;
       ctx.drawImage(layer, 0, 0);
       ctx.restore();
       for (const c of drawOrder) {
@@ -406,7 +406,8 @@
         ctx.lineWidth = Math.max(1.5, s * (on ? 0.07 : 0.045));
         ctx.stroke();
       }
-      if (hover) { const p = cellPos(hover); drawStack(p.x, p.y, drag.stack, 0.45, false); }
+      // snap: over a free cell the stack sits on that cell instead of following the pointer
+      if (hover) { const p = cellPos(hover); drawStack(p.x, p.y, drag.stack); }
     }
 
     // popping tiles (cleared)
@@ -457,7 +458,7 @@
     }
 
     // dragged stack
-    if (drag) drawStack(drag.x, drag.y, drag.stack, 0.95);
+    if (drag && !hover) drawStack(drag.x, drag.y, drag.stack, 0.95);
 
     requestAnimationFrame(render);
   }
