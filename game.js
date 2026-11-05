@@ -297,6 +297,7 @@
     const s = L.s, r = s * TILE_R * scale, th = s * TILE_H * scale;
     const sh = SHADES[color];
     ctx.globalAlpha = alpha;
+    y -= th; // lift the tile so its bottom edge (not its top face) rests at y
     // side band
     hexPath(x, y + th, r);
     ctx.fillStyle = sh.dark; ctx.fill();
@@ -314,7 +315,7 @@
     const th = L.s * TILE_H;
     for (let i = 0; i < stack.length; i++) drawTile(x, y - i * th, stack[i], 1, alpha);
     if (label && stack.length > 1) {
-      const ty = y - (stack.length - 1) * th;
+      const ty = y - stack.length * th;
       ctx.globalAlpha = alpha;
       ctx.font = `800 ${Math.round(L.s * 0.48)}px system-ui, -apple-system, "Segoe UI", Roboto, sans-serif`;
       ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
