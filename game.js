@@ -21,7 +21,9 @@
 
   // ---------- DOM ----------
   const canvas = document.getElementById('board');
-  const ctx = canvas.getContext('2d');
+  let ctx = canvas.getContext('2d');
+  const layer = document.createElement('canvas'); // offscreen layer for faded stacks
+  const layerCtx = layer.getContext('2d');
   const scoreEl = document.getElementById('score');
   const bestEl = document.getElementById('best');
   const startOverlay = document.getElementById('startOverlay');
@@ -255,6 +257,7 @@
     L.w = rect.width; L.h = rect.height;
     canvas.width = Math.round(L.w * L.dpr);
     canvas.height = Math.round(L.h * L.dpr);
+    layer.width = canvas.width; layer.height = canvas.height;
     const halfBoard = RADIUS * SQ3 * Y_SCALE + SQ3 / 2 * Y_SCALE; // in units of s
     const totalH = 1.6 + 2 * halfBoard + 1.0 + 2.6 + 0.6;
     const s = Math.max(8, Math.min(L.w / (RADIUS * 3 + 3.4), L.h / totalH));
@@ -326,19 +329,20 @@
   function drawSocket(c, highlighted) {
     const p = cellPos(c), s = L.s;
     if (c.blocked) {
-      hexPath(p.x, p.y + s * 0.12, s * 0.92); ctx.fillStyle = '#0a0b16'; ctx.fill();
+      // light gray slab so disabled cells stand out against the dark board
+      hexPath(p.x, p.y + s * 0.12, s * 0.92); ctx.fillStyle = '#7d808c'; ctx.fill();
       hexPath(p.x, p.y, s * 0.92);
       const g = ctx.createLinearGradient(p.x, p.y - s, p.x, p.y + s);
-      g.addColorStop(0, '#4a4f6e'); g.addColorStop(1, '#2a2d45');
+      g.addColorStop(0, '#e4e5ea'); g.addColorStop(1, '#b9bbc4');
       ctx.fillStyle = g; ctx.fill();
-      ctx.strokeStyle = 'rgba(255,255,255,0.12)'; ctx.lineWidth = 1; ctx.stroke();
-      // crack marks
-      ctx.strokeStyle = 'rgba(0,0,0,0.45)'; ctx.lineWidth = Math.max(1, s * 0.05);
+      ctx.strokeStyle = 'rgba(255,255,255,0.6)'; ctx.lineWidth = Math.max(1, s * 0.03); ctx.stroke();
+      // cross mark
+      const k = s * 0.28;
+      ctx.strokeStyle = 'rgba(70,74,90,0.55)'; ctx.lineWidth = Math.max(1.5, s * 0.08); ctx.lineCap = 'round';
       ctx.beginPath();
-      ctx.moveTo(p.x - s * 0.35, p.y - s * 0.15); ctx.lineTo(p.x - s * 0.05, p.y + s * 0.02);
-      ctx.lineTo(p.x + s * 0.12, p.y - s * 0.2); ctx.moveTo(p.x - s * 0.05, p.y + s * 0.02);
-      ctx.lineTo(p.x + s * 0.05, p.y + s * 0.3);
-      ctx.stroke();
+      ctx.moveTo(p.x - k, p.y - k * Y_SCALE); ctx.lineTo(p.x + k, p.y + k * Y_SCALE);
+      ctx.moveTo(p.x + k, p.y - k * Y_SCALE); ctx.lineTo(p.x - k, p.y + k * Y_SCALE);
+      ctx.stroke(); ctx.lineCap = 'butt';
       return;
     }
     hexPath(p.x, p.y, s * 0.95);
@@ -349,19 +353,21 @@
     ctx.stroke();
   }
 
+  function drawPlatform() {
+    const s = L.s;
+    hexPath(L.cx, L.cy + s * 0.3, s * (RADIUS * 1.5 + 1.1) / Math.cos(Math.PI / 6), Math.PI / 6);
+    ctx.fillStyle = 'rgba(0,0,0,0.25)'; ctx.fill();
+    hexPath(L.cx, L.cy, s * (RADIUS * 1.5 + 1.1) / Math.cos(Math.PI / 6), Math.PI / 6);
+    ctx.fillStyle = 'rgba(255,255,255,0.035)'; ctx.fill();
+  }
+
   function render() {
     const t = now();
     const s = L.s, th = s * TILE_H;
     ctx.setTransform(L.dpr, 0, 0, L.dpr, 0, 0);
     ctx.clearRect(0, 0, L.w, L.h);
 
-    // board platform
-    ctx.save();
-    hexPath(L.cx, L.cy + s * 0.3, s * (RADIUS * 1.5 + 1.1) / Math.cos(Math.PI / 6), Math.PI / 6);
-    ctx.fillStyle = 'rgba(0,0,0,0.25)'; ctx.fill();
-    hexPath(L.cx, L.cy, s * (RADIUS * 1.5 + 1.1) / Math.cos(Math.PI / 6), Math.PI / 6);
-    ctx.fillStyle = 'rgba(255,255,255,0.035)'; ctx.fill();
-    ctx.restore();
+    drawPlatform();
 
     // advance flyers first so landing tiles are in stacks before drawing
     for (let i = flyers.length - 1; i >= 0; i--) {
@@ -369,13 +375,38 @@
     }
 
     for (const c of drawOrder) drawSocket(c, c === hover);
+    // While dragging, placed stacks are drawn into an offscreen layer and composited
+    // semi-transparently, then free cells are outlined on top, so it is easy to see where
+    // the stack can go.
+    const fade = !!drag;
+    const mainCtx = ctx;
+    if (fade) {
+      layerCtx.setTransform(1, 0, 0, 1, 0, 0);
+      layerCtx.clearRect(0, 0, layer.width, layer.height);
+      layerCtx.setTransform(L.dpr, 0, 0, L.dpr, 0, 0);
+      ctx = layerCtx;
+    }
     for (const c of drawOrder) {
-      if (!c.stack.length) {
-        if (c === hover && drag) { const p = cellPos(c); drawStack(p.x, p.y, drag.stack, 0.45, false); }
-        continue;
-      }
+      if (!c.stack.length) continue;
       const p = cellPos(c);
       drawStack(p.x, p.y, c.stack);
+    }
+    ctx = mainCtx;
+    if (fade) {
+      ctx.save();
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.globalAlpha = 0.3;
+      ctx.drawImage(layer, 0, 0);
+      ctx.restore();
+      for (const c of drawOrder) {
+        if (c.blocked || c.stack.length) continue;
+        const p = cellPos(c), on = c === hover;
+        hexPath(p.x, p.y, s * 0.95);
+        ctx.strokeStyle = on ? 'rgba(255,210,120,0.95)' : 'rgba(255,255,255,0.6)';
+        ctx.lineWidth = Math.max(1.5, s * (on ? 0.07 : 0.045));
+        ctx.stroke();
+      }
+      if (hover) { const p = cellPos(hover); drawStack(p.x, p.y, drag.stack, 0.45, false); }
     }
 
     // popping tiles (cleared)
