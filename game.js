@@ -147,7 +147,7 @@
     score = 0; busy = false; over = false; started = true;
     queue = []; dropped = new Set(); combo = 0;
     flyers = []; poppers = []; floaters = [];
-    drag = null; hover = null; autoMove = null;
+    drag = null; hover = null; autoMove = null; plan = [];
     refillTray();
     updateScore(false);
     startOverlay.classList.add('hidden');
@@ -276,6 +276,8 @@
   // simResolve() mirrors resolve() without animation; keep the two in sync.
   const AUTO_PAUSE_MS = 350;   // idle time before the next auto move
   const AUTO_MOVE_MS = 450;    // flight of the stack from the tray to its cell
+  const AUTO_DROP_MS = 120;    // final descent onto the cell once the board is idle
+  const AUTO_LIFT = 1.5;       // hover height above the target cell while waiting, in cell sizes
   const EVAL_EMPTY = 3;        // leaf score per empty cell
   const EVAL_MIX = 1;          // leaf penalty per color change inside a stack
   const GAME_OVER = -1e6;
@@ -322,16 +324,16 @@
     const nb = cells.map((c) => neighbors(c).map((n) => idx.get(n)));
     const open = cells.map((c, i) => (c.blocked ? -1 : i)).filter((i) => i >= 0);
     let best = null, bestV = -Infinity;
-    const dfs = (st, left, pts, first) => {
+    const dfs = (st, left, pts, path) => {
       const empties = open.filter((i) => !st[i].length);
       let v = null;
-      if (first && !empties.length) v = GAME_OVER + pts;
+      if (path.length && !empties.length) v = GAME_OVER + pts;
       else if (!left.length) {
         v = pts + EVAL_EMPTY * empties.length;
         for (const i of open) if (st[i].length) v -= EVAL_MIX * (runCount(st[i]) - 1);
       }
       if (v !== null) {
-        if (v > bestV) { bestV = v; best = first; }
+        if (v > bestV) { bestV = v; best = path; }
         return;
       }
       for (const si of left) {
@@ -341,41 +343,58 @@
           const st2 = st.map((s) => s.slice());
           st2[ci] = tray[si].slice();
           const p = simResolve(st2, nb, ci);
-          dfs(st2, left.filter((o) => o !== si), pts + p, first || { slot: si, cell: cells[ci] });
+          dfs(st2, left.filter((o) => o !== si), pts + p, [...path, { slot: si, cell: cells[ci] }]);
         }
       }
     };
-    dfs(cells.map((c) => c.stack.slice()), [0, 1, 2].filter((i) => tray[i]), 0, null);
-    return best;
+    dfs(cells.map((c) => c.stack.slice()), [0, 1, 2].filter((i) => tray[i]), 0, []);
+    return best || [];
   }
 
-  // Called every frame: waits until the board is idle, then flies the chosen stack to its cell
-  // through the normal drag state and drops it with endDrag().
-  let auto = false, autoMove = null, autoIdle = 0;
+  // Called every frame. Plans the whole tray once the board is idle, then flies the planned
+  // stacks one after another: each takes off as soon as the previous one has dropped, hovers
+  // above its cell while a chain is still animating, and drops only once the board is idle,
+  // so the game plays out exactly as simulated. Drawn on its own, not through `drag`, so the
+  // board is not flattened or faded meanwhile.
+  let auto = false, plan = [], autoMove = null, autoIdle = 0;
   function autoTick(t) {
+    if (over) { autoMove = null; plan = []; }
     if (autoMove) {
-      const k = Math.min(1, (t - autoMove.t0) / AUTO_MOVE_MS);
-      const e = k < 0.5 ? 2 * k * k : 1 - Math.pow(-2 * k + 2, 2) / 2;
-      const b = cellPos(autoMove.cell);
-      drag.x = autoMove.x + (b.x - autoMove.x) * e;
-      drag.y = autoMove.y + (b.y - autoMove.y) * e;
-      hover = autoMove.cell;
-      if (k >= 1) { autoMove = null; endDrag(); }
+      const m = autoMove, b = cellPos(m.cell), lift = L.s * AUTO_LIFT;
+      if (!m.drop) {
+        const k = Math.min(1, (t - m.t0) / AUTO_MOVE_MS);
+        const e = k < 0.5 ? 2 * k * k : 1 - Math.pow(-2 * k + 2, 2) / 2;
+        m.x = m.x0 + (b.x - m.x0) * e;
+        m.y = m.y0 + (b.y - lift - m.y0) * e;
+        if (k >= 1 && !busy && !flyers.length) m.drop = t;
+      } else {
+        const k = Math.min(1, (t - m.drop) / AUTO_DROP_MS);
+        m.x = b.x; m.y = b.y - lift * (1 - k);
+        if (k >= 1) {
+          autoMove = null;
+          tray[m.slot] = null;
+          refillTray();
+          place(m.cell, m.stack);
+        }
+      }
       return;
     }
-    if (!auto || !started || over || drag || busy || flyers.length) { autoIdle = 0; return; }
-    if (!autoIdle) autoIdle = t;
-    if (t - autoIdle < AUTO_PAUSE_MS) return;
-    autoIdle = 0;
-    const m = bestMove();
-    if (!m) return;
-    const sl = L.slots[m.slot];
-    drag = { slot: m.slot, stack: tray[m.slot], x: sl.x, y: sl.y };
-    autoMove = { cell: m.cell, x: sl.x, y: sl.y, t0: t };
+    if (!auto || !started || over || drag) { autoIdle = 0; return; }
+    if (!plan.length) {
+      if (busy || flyers.length) { autoIdle = 0; return; }
+      if (!autoIdle) autoIdle = t;
+      if (t - autoIdle < AUTO_PAUSE_MS) return;
+      autoIdle = 0;
+      plan = bestMove();
+      if (!plan.length) return;
+    }
+    const m = plan.shift(), sl = L.slots[m.slot];
+    autoMove = { slot: m.slot, stack: tray[m.slot], cell: m.cell, x0: sl.x, y0: sl.y, x: sl.x, y: sl.y, t0: t, drop: 0 };
   }
 
   function setAuto(on) {
     auto = on;
+    plan = [];
     autoBtn.classList.toggle('on', on);
     autoBtn.setAttribute('aria-pressed', String(on));
     if (on && (!started || over)) newGame();
@@ -580,7 +599,7 @@
       const sl = L.slots[i];
       hexPath(sl.x, sl.y, s * 0.95);
       ctx.fillStyle = 'rgba(0,0,0,0.2)'; ctx.fill();
-      if (tray[i] && !(drag && drag.slot === i)) {
+      if (tray[i] && !(drag && drag.slot === i) && !(autoMove && autoMove.slot === i)) {
         drawStack(sl.x, sl.y, tray[i]);
       }
     }
@@ -601,6 +620,7 @@
 
     // dragged stack
     if (drag) drawStack(drag.x, drag.y, drag.stack, 0.95);
+    if (autoMove) drawStack(autoMove.x, autoMove.y, autoMove.stack);
 
     if (DEBUG) drawPaletteColumn();
 
@@ -677,7 +697,7 @@
   }
 
   canvas.addEventListener('pointerdown', (e) => {
-    if (!started || over || drag || auto) return;
+    if (!started || over || drag || auto || autoMove) return;
     const p = pointerPos(e);
     const th = L.s * TILE_H * flatK;
     for (let i = 0; i < 3; i++) {
