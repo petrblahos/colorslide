@@ -330,7 +330,7 @@
   function drawStack(x, y, stack, alpha = 1, label = true) {
     const th = L.s * TILE_H;
     for (let i = 0; i < stack.length; i++) drawTile(x, y - i * th, stack[i], 1, alpha);
-    if (label && stack.length > 1) {
+    if (label) {
       const ty = y - stack.length * th;
       ctx.globalAlpha = alpha;
       ctx.font = `800 ${Math.round(L.s * 0.48)}px system-ui, -apple-system, "Segoe UI", Roboto, sans-serif`;
