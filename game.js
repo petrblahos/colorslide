@@ -34,6 +34,7 @@
   const startOverlay = document.getElementById('startOverlay');
   const overOverlay = document.getElementById('overOverlay');
   const finalScoreEl = document.getElementById('finalScore');
+  const autoBtn = document.getElementById('autoBtn');
 
   // ---------- State ----------
   let cells = [], cellMap = new Map(), drawOrder = [];
@@ -146,7 +147,7 @@
     score = 0; busy = false; over = false; started = true;
     queue = []; dropped = new Set(); combo = 0;
     flyers = []; poppers = []; floaters = [];
-    drag = null; hover = null;
+    drag = null; hover = null; autoMove = null;
     refillTray();
     updateScore(false);
     startOverlay.classList.add('hidden');
@@ -269,6 +270,117 @@
     checkGameOver();
   }
 
+  // ---------- Auto play ----------
+  // The solver tries every order and position for the stacks left in the tray (the tray only
+  // refills once it is empty, so that is everything known), simulating each chain instantly.
+  // simResolve() mirrors resolve() without animation; keep the two in sync.
+  const AUTO_PAUSE_MS = 350;   // idle time before the next auto move
+  const AUTO_MOVE_MS = 450;    // flight of the stack from the tray to its cell
+  const EVAL_EMPTY = 3;        // leaf score per empty cell
+  const EVAL_MIX = 1;          // leaf penalty per color change inside a stack
+  const GAME_OVER = -1e6;
+
+  function simResolve(st, nb, start) {
+    const q = [start];
+    const enq = (i, front) => {
+      const j = q.indexOf(i);
+      if (j >= 0) q.splice(j, 1);
+      if (front) q.unshift(i); else q.push(i);
+    };
+    let pts = 0, combo = 0, guard = 0;
+    while (q.length && guard++ < 5000) {
+      const c = q.shift();
+      if (!st[c].length) continue;
+      const color = st[c][st[c].length - 1];
+      const nbs = nb[c].filter((n) => st[n].length && st[n][st[n].length - 1] === color);
+      if (!nbs.length) continue;
+      const cands = [c, ...nbs];
+      cands.sort((a, b) =>
+        runCount(st[a]) - runCount(st[b]) ||
+        topRun(st[b]) - topRun(st[a]) ||
+        (a === c ? -1 : b === c ? 1 : 0));
+      const target = cands[0];
+      const move = (from, to) => { st[to].push(...st[from].splice(-topRun(st[from]))); };
+      if (target === c) {
+        for (const n of nbs) { move(n, c); enq(n, false); }
+      } else {
+        move(c, target); enq(c, false);
+      }
+      const run = topRun(st[target]);
+      if (run >= CLEAR_AT) {
+        combo++;
+        st[target].length -= run;
+        pts += run * combo;
+      }
+      enq(target, true);
+    }
+    return pts;
+  }
+
+  function bestMove() {
+    const idx = new Map(cells.map((c, i) => [c, i]));
+    const nb = cells.map((c) => neighbors(c).map((n) => idx.get(n)));
+    const open = cells.map((c, i) => (c.blocked ? -1 : i)).filter((i) => i >= 0);
+    let best = null, bestV = -Infinity;
+    const dfs = (st, left, pts, first) => {
+      const empties = open.filter((i) => !st[i].length);
+      let v = null;
+      if (first && !empties.length) v = GAME_OVER + pts;
+      else if (!left.length) {
+        v = pts + EVAL_EMPTY * empties.length;
+        for (const i of open) if (st[i].length) v -= EVAL_MIX * (runCount(st[i]) - 1);
+      }
+      if (v !== null) {
+        if (v > bestV) { bestV = v; best = first; }
+        return;
+      }
+      for (const si of left) {
+        // identical stacks in the tray give identical subtrees
+        if (left.some((o) => o < si && tray[o].join() === tray[si].join())) continue;
+        for (const ci of empties) {
+          const st2 = st.map((s) => s.slice());
+          st2[ci] = tray[si].slice();
+          const p = simResolve(st2, nb, ci);
+          dfs(st2, left.filter((o) => o !== si), pts + p, first || { slot: si, cell: cells[ci] });
+        }
+      }
+    };
+    dfs(cells.map((c) => c.stack.slice()), [0, 1, 2].filter((i) => tray[i]), 0, null);
+    return best;
+  }
+
+  // Called every frame: waits until the board is idle, then flies the chosen stack to its cell
+  // through the normal drag state and drops it with endDrag().
+  let auto = false, autoMove = null, autoIdle = 0;
+  function autoTick(t) {
+    if (autoMove) {
+      const k = Math.min(1, (t - autoMove.t0) / AUTO_MOVE_MS);
+      const e = k < 0.5 ? 2 * k * k : 1 - Math.pow(-2 * k + 2, 2) / 2;
+      const b = cellPos(autoMove.cell);
+      drag.x = autoMove.x + (b.x - autoMove.x) * e;
+      drag.y = autoMove.y + (b.y - autoMove.y) * e;
+      hover = autoMove.cell;
+      if (k >= 1) { autoMove = null; endDrag(); }
+      return;
+    }
+    if (!auto || !started || over || drag || busy || flyers.length) { autoIdle = 0; return; }
+    if (!autoIdle) autoIdle = t;
+    if (t - autoIdle < AUTO_PAUSE_MS) return;
+    autoIdle = 0;
+    const m = bestMove();
+    if (!m) return;
+    const sl = L.slots[m.slot];
+    drag = { slot: m.slot, stack: tray[m.slot], x: sl.x, y: sl.y };
+    autoMove = { cell: m.cell, x: sl.x, y: sl.y, t0: t };
+  }
+
+  function setAuto(on) {
+    auto = on;
+    autoBtn.classList.toggle('on', on);
+    autoBtn.setAttribute('aria-pressed', String(on));
+    if (on && (!started || over)) newGame();
+  }
+
   // ---------- Layout ----------
   function resize() {
     const rect = canvas.getBoundingClientRect();
@@ -377,6 +489,7 @@
     const t = now();
     const dt = lastFrame ? t - lastFrame : 0;
     lastFrame = t;
+    autoTick(t);
     flatP = drag ? Math.min(1, flatP + dt / FLATTEN_MS) : Math.max(0, flatP - dt / UNFLATTEN_MS);
     flatK = 1 - flatP * flatP * (3 - 2 * flatP);
     const s = L.s, th = s * TILE_H * flatK;
@@ -564,7 +677,7 @@
   }
 
   canvas.addEventListener('pointerdown', (e) => {
-    if (!started || over || drag) return;
+    if (!started || over || drag || auto) return;
     const p = pointerPos(e);
     const th = L.s * TILE_H * flatK;
     for (let i = 0; i < 3; i++) {
@@ -612,6 +725,7 @@
   canvas.addEventListener('pointercancel', () => { drag = null; hover = null; });
 
   document.getElementById('newGame').addEventListener('click', newGame);
+  autoBtn.addEventListener('click', () => setAuto(!auto));
   document.getElementById('startBtn').addEventListener('click', newGame);
   document.getElementById('againBtn').addEventListener('click', newGame);
   window.addEventListener('resize', resize);
@@ -654,6 +768,7 @@
   window.__game = {
     get cells() { return cells; }, get tray() { return tray; }, get score() { return score; },
     get busy() { return busy; }, get over() { return over; },
+    bestMove, setAuto,
     cell: (q, r) => cellMap.get(q + ',' + r),
     place: (q, r, stack) => place(cellMap.get(q + ',' + r), stack),
     cellScreenPos: (q, r) => cellPos(cellMap.get(q + ',' + r)),

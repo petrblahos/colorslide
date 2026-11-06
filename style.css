@@ -43,6 +43,7 @@ h1 span { color: var(--accent); }
   box-shadow: 0 3px 0 #c97d1e, 0 6px 14px rgba(0,0,0,0.3);
 }
 .btn:active { transform: translateY(2px); box-shadow: 0 1px 0 #c97d1e; }
+.btn.on { background: linear-gradient(180deg, #8ff0a8, #3fbf6a); box-shadow: 0 3px 0 #23803f, 0 6px 14px rgba(0,0,0,0.3); }
 .btn.ghost {
   background: transparent; color: var(--fg); box-shadow: none;
   border: 1px solid rgba(255,255,255,0.25); margin-top: 12px;
