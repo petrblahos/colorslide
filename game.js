@@ -522,7 +522,7 @@
     if (fade) {
       // outline each occupied cell with nested rings, one per color run: the bottom run is the
       // outer ring, each run above it is drawn inside the previous one
-      const ow = Math.max(2, s * 0.08);
+      const ow = Math.max(3, s * 0.12);
       ctx.lineWidth = ow;
       for (const c of drawOrder) {
         if (!c.stack.length) continue;
