@@ -5,19 +5,20 @@
   // ---------- Constants ----------
   const RADIUS = 2;            // hex board radius (19 cells, 5 across)
   const CLEAR_AT = 10;         // tiles of one color needed to clear
-  const Y_SCALE = 0.72;        // vertical squash for a tilted look
-  const TILE_H = 0.17;         // tile thickness relative to hex size
+  let Y_SCALE = 0.85;          // vertical squash for a tilted look
+  let TILE_H = 0.17;           // tile thickness relative to hex size
   const TILE_R = 0.9;          // tile radius relative to cell size
   const CORNER_ROUND = 0.2;    // hexagon corner rounding relative to radius
   const FLY_MS = 260;          // tile flight duration
   const STAGGER_MS = 60;       // delay between tiles in a transfer
   const POP_MS = 320;
   const SQ3 = Math.sqrt(3);
-  const PALETTE = ['#ff5d73', '#4cc9f0', '#ffd23f', '#6be08a', '#9b7bff', '#ff9a3c', '#f36bd6'];
+  const PALETTE = ['#ff5d73', '#3a86ff', '#ffd23f', '#6be08a', '#9b7bff', '#ff9a3c', '#f36bd6'];
   const START_COLORS = 3;
-  const POINTS_PER_COLOR = 120;
+  const POINTS_PER_COLOR = 100;
   const DIRS = [[1, 0], [1, -1], [0, -1], [-1, 0], [-1, 1], [0, 1]];
   const BEST_KEY = 'colorslide.best';
+  const DEBUG = new URLSearchParams(location.search).get('debug') === '1';
 
   // ---------- DOM ----------
   const canvas = document.getElementById('board');
@@ -72,7 +73,7 @@
     else { r += (255 - r) * f; g += (255 - g) * f; b += (255 - b) * f; }
     return `rgb(${r | 0},${g | 0},${b | 0})`;
   }
-  const SHADES = PALETTE.map((c) => ({ base: c, light: shade(c, 0.35), dark: shade(c, -0.38), edge: shade(c, -0.55) }));
+  const SHADES = PALETTE.map((c) => ({ base: c, light: shade(c, 0.2), dark: shade(c, -0.55), edge: shade(c, -0.7) }));
 
   // ---------- Board ----------
   function buildBoard() {
@@ -99,7 +100,9 @@
     return out;
   }
 
+  let debugColors = null; // set by the debug slider; overrides the score-based count
   function activeColors() {
+    if (debugColors !== null) return debugColors;
     return Math.min(PALETTE.length, START_COLORS + Math.floor(score / POINTS_PER_COLOR));
   }
 
@@ -260,7 +263,7 @@
     layer.width = canvas.width; layer.height = canvas.height;
     const halfBoard = RADIUS * SQ3 * Y_SCALE + SQ3 / 2 * Y_SCALE; // in units of s
     const totalH = 1.6 + 2 * halfBoard + 1.0 + 2.6 + 0.6;
-    const s = Math.max(8, Math.min(L.w / (RADIUS * 3 + 3.4), L.h / totalH));
+    const s = Math.max(8, Math.min(L.w / (RADIUS * 3 + 2.1), L.h / totalH));
     L.s = s;
     const used = totalH * s;
     const top0 = (L.h - used) / 2;
@@ -354,21 +357,11 @@
     ctx.stroke();
   }
 
-  function drawPlatform() {
-    const s = L.s;
-    hexPath(L.cx, L.cy + s * 0.3, s * (RADIUS * 1.5 + 1.1) / Math.cos(Math.PI / 6), Math.PI / 6);
-    ctx.fillStyle = 'rgba(0,0,0,0.25)'; ctx.fill();
-    hexPath(L.cx, L.cy, s * (RADIUS * 1.5 + 1.1) / Math.cos(Math.PI / 6), Math.PI / 6);
-    ctx.fillStyle = 'rgba(255,255,255,0.035)'; ctx.fill();
-  }
-
   function render() {
     const t = now();
     const s = L.s, th = s * TILE_H;
     ctx.setTransform(L.dpr, 0, 0, L.dpr, 0, 0);
     ctx.clearRect(0, 0, L.w, L.h);
-
-    drawPlatform();
 
     // advance flyers first so landing tiles are in stacks before drawing
     for (let i = flyers.length - 1; i >= 0; i--) {
@@ -429,7 +422,7 @@
     }
 
     // tray
-    const tw = Math.min(L.w - 16, (L.slots[2].x - L.slots[0].x) + 3.2 * s);
+    const tw = Math.min(L.w - 4, (L.slots[2].x - L.slots[0].x) + 3.2 * s);
     const tx = L.cx - tw / 2, ty = L.trayY - 2.0 * s, thh = 2.9 * s;
     ctx.fillStyle = 'rgba(255,255,255,0.05)';
     roundRect(tx, ty, tw, thh, s * 0.5); ctx.fill();
@@ -460,7 +453,50 @@
     // dragged stack
     if (drag) drawStack(drag.x, drag.y, drag.stack, 0.95);
 
+    if (DEBUG) drawPaletteColumn();
+
     requestAnimationFrame(render);
+  }
+
+  // Debug: every palette color as a numbered tile, stacked down the left edge of the whole
+  // window, drawn on its own overlay canvas above everything else.
+  let dbgCanvas = null, dbgScale = 1;
+  // Push the whole game to the right of the column, then re-layout the board. Palette tiles
+  // fit the window height but are never bigger than game tiles; since the game tile size
+  // depends on the space left, repeat until the column width settles.
+  function debugLayout() {
+    const fit = window.innerHeight / PALETTE.length / 1.1;
+    for (let i = 0; i < 5; i++) {
+      dbgScale = Math.min(1, fit / (L.s * (TILE_R * SQ3 * Y_SCALE + TILE_H)));
+      const pad = Math.ceil(2 * L.s * TILE_R * dbgScale + 16) + 'px';
+      if (document.body.style.paddingLeft === pad) break;
+      document.body.style.paddingLeft = pad;
+      resize();
+    }
+  }
+  function drawPaletteColumn() {
+    const W = window.innerWidth, H = window.innerHeight;
+    if (dbgCanvas.width !== Math.round(W * L.dpr) || dbgCanvas.height !== Math.round(H * L.dpr)) {
+      dbgCanvas.width = Math.round(W * L.dpr); dbgCanvas.height = Math.round(H * L.dpr);
+    }
+    const mainCtx = ctx;
+    ctx = dbgCanvas.getContext('2d');
+    ctx.setTransform(L.dpr, 0, 0, L.dpr, 0, 0);
+    ctx.clearRect(0, 0, W, H);
+    const n = PALETTE.length, scale = dbgScale;
+    const r = L.s * TILE_R * scale, th = L.s * TILE_H * scale;
+    const cellH = 1.1 * (r * SQ3 * Y_SCALE + th);
+    const x = 8 + r;
+    ctx.font = `800 ${Math.round(r * 0.6)}px system-ui, -apple-system, "Segoe UI", Roboto, sans-serif`;
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    for (let i = 0; i < n; i++) {
+      const y = (i + 0.5) * cellH + th / 2;
+      drawTile(x, y, i, scale);
+      ctx.lineWidth = Math.max(2, r * 0.1); ctx.strokeStyle = 'rgba(0,0,0,0.35)';
+      ctx.strokeText(String(i + 1), x, y - th + 1);
+      ctx.fillStyle = '#fff'; ctx.fillText(String(i + 1), x, y - th + 1);
+    }
+    ctx = mainCtx;
   }
 
   function roundRect(x, y, w, h, r) {
@@ -547,6 +583,33 @@
   bestEl.textContent = best;
   resize();
   requestAnimationFrame(render);
+
+  // ?debug=1: sliders for tuning tilt and tile thickness live.
+  if (DEBUG) {
+    dbgCanvas = document.createElement('canvas');
+    dbgCanvas.style.cssText = 'position:fixed;inset:0;width:100%;height:100%;z-index:98;pointer-events:none';
+    document.body.append(dbgCanvas);
+    const panel = document.createElement('div');
+    panel.style.cssText = 'position:fixed;right:8px;bottom:8px;z-index:99;padding:6px 10px;' +
+      'background:rgba(0,0,0,.75);color:#fff;font:12px monospace;border-radius:6px';
+    const slider = (label, min, max, get, set, step = 0.01) => {
+      const fmt = (v) => (step < 1 ? v.toFixed(2) : String(v));
+      const row = document.createElement('label');
+      row.style.cssText = 'display:flex;align-items:center;gap:6px';
+      const input = Object.assign(document.createElement('input'), { type: 'range', min, max, step, value: get() });
+      const out = document.createElement('span');
+      out.textContent = fmt(get());
+      input.addEventListener('input', () => { set(+input.value); out.textContent = fmt(get()); debugLayout(); });
+      row.append(label, input, out);
+      panel.append(row);
+    };
+    slider('Y_SCALE', 0.4, 1, () => Y_SCALE, (v) => { Y_SCALE = v; });
+    slider('TILE_H ', 0.05, 0.4, () => TILE_H, (v) => { TILE_H = v; });
+    slider('COLORS ', 1, PALETTE.length, activeColors, (v) => { debugColors = v; }, 1);
+    document.body.append(panel);
+    window.addEventListener('resize', debugLayout);
+    debugLayout();
+  }
 
   // Small debug/test hook.
   window.__game = {
