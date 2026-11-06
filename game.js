@@ -7,6 +7,7 @@
   const CLEAR_AT = 10;         // tiles of one color needed to clear
   let Y_SCALE = 0.85;          // vertical squash for a tilted look
   let TILE_H = 0.17;           // tile thickness relative to hex size
+  let FADE_ALPHA = 0.5;        // opacity of placed stacks while dragging
   const TILE_R = 0.9;          // tile radius relative to cell size
   const CORNER_ROUND = 0.2;    // hexagon corner rounding relative to radius
   const FLY_MS = 260;          // tile flight duration
@@ -387,11 +388,21 @@
     }
     ctx = mainCtx;
     if (fade) {
-      ctx.save();
-      ctx.setTransform(1, 0, 0, 1, 0, 0);
-      ctx.globalAlpha = 0.5;
-      ctx.drawImage(layer, 0, 0);
-      ctx.restore();
+      // outline each occupied cell with nested rings, one per color run: the bottom run is the
+      // outer ring, each run above it is drawn inside the previous one
+      const ow = Math.max(2, s * 0.08);
+      ctx.lineWidth = ow;
+      for (const c of drawOrder) {
+        if (!c.stack.length) continue;
+        const p = cellPos(c);
+        let r = s * 0.95;
+        for (let i = 0; i < c.stack.length; i++) {
+          if (i > 0 && c.stack[i] === c.stack[i - 1]) continue;
+          hexPath(p.x, p.y, Math.max(r, s * 0.2));
+          ctx.strokeStyle = SHADES[c.stack[i]].base; ctx.stroke();
+          r -= ow * 1.4;
+        }
+      }
       for (const c of drawOrder) {
         if (c.blocked || c.stack.length) continue;
         const p = cellPos(c), on = c === hover;
@@ -400,6 +411,12 @@
         ctx.lineWidth = Math.max(1.5, s * (on ? 0.07 : 0.045));
         ctx.stroke();
       }
+      // faded stacks go on top of the outlines
+      ctx.save();
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.globalAlpha = FADE_ALPHA;
+      ctx.drawImage(layer, 0, 0);
+      ctx.restore();
       if (hover) { const p = cellPos(hover); drawStack(p.x, p.y, drag.stack, 0.45, false); }
     }
 
@@ -605,6 +622,7 @@
     };
     slider('Y_SCALE', 0.4, 1, () => Y_SCALE, (v) => { Y_SCALE = v; });
     slider('TILE_H ', 0.05, 0.4, () => TILE_H, (v) => { TILE_H = v; });
+    slider('FADE   ', 0, 1, () => FADE_ALPHA, (v) => { FADE_ALPHA = v; });
     slider('COLORS ', 1, PALETTE.length, activeColors, (v) => { debugColors = v; }, 1);
     document.body.append(panel);
     window.addEventListener('resize', debugLayout);
