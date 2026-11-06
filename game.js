@@ -17,7 +17,7 @@
   const UNFLATTEN_MS = 100;    // ...and spring back when it ends
   const RUSH = 2.5;            // animation speed-up while more drops wait in the queue
   const SQ3 = Math.sqrt(3);
-  const PALETTE = ['#ff5d73', '#3a86ff', '#ffd23f', '#6be08a', '#9b7bff', '#ff9a3c', '#f36bd6'];
+  const PALETTE = ['#ff5d73', '#3a86ff', '#ffd23f', '#6be08a', '#9b7bff', '#ff9a3c', '#8c909c'];
   const START_COLORS = 3;
   const POINTS_PER_COLOR = 100;
   const DIRS = [[1, 0], [1, -1], [0, -1], [-1, 0], [-1, 1], [0, 1]];
@@ -81,7 +81,7 @@
     else { r += (255 - r) * f; g += (255 - g) * f; b += (255 - b) * f; }
     return `rgb(${r | 0},${g | 0},${b | 0})`;
   }
-  const SHADES = PALETTE.map((c) => ({ base: c, light: shade(c, 0.2), dark: shade(c, -0.55), edge: shade(c, -0.7) }));
+  const SHADES = PALETTE.map((c) => ({ base: c, light: shade(c, 0.2), dark: shade(c, -0.38), edge: shade(c, -0.55) }));
 
   // ---------- Board ----------
   function buildBoard() {
