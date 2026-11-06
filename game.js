@@ -13,6 +13,8 @@
   const FLY_MS = 260;          // tile flight duration
   const STAGGER_MS = 60;       // delay between tiles in a transfer
   const POP_MS = 320;
+  const FLATTEN_MS = 250;      // tiles flatten to zero height when a drag starts
+  const UNFLATTEN_MS = 100;    // ...and spring back when it ends
   const RUSH = 2.5;            // animation speed-up while more drops wait in the queue
   const SQ3 = Math.sqrt(3);
   const PALETTE = ['#ff5d73', '#3a86ff', '#ffd23f', '#6be08a', '#9b7bff', '#ff9a3c', '#f36bd6'];
@@ -43,6 +45,7 @@
   let queue = [], dropped = new Set(), combo = 0;
   let flyers = [], poppers = [], floaters = [];
   let drag = null, hover = null;
+  let flatP = 0, flatK = 1, lastFrame = 0; // flatten progress (0..1) and resulting height factor
   let L = { w: 0, h: 0, dpr: 1, s: 20, cx: 0, cy: 0, trayY: 0, slots: [] };
 
   // ---------- Helpers ----------
@@ -310,7 +313,7 @@
   }
 
   function drawTile(x, y, color, scale = 1, alpha = 1) {
-    const s = L.s, r = s * TILE_R * scale, th = s * TILE_H * scale;
+    const s = L.s, r = s * TILE_R * scale, th = s * TILE_H * flatK * scale;
     const sh = SHADES[color];
     ctx.globalAlpha = alpha;
     y -= th; // lift the tile so its bottom edge (not its top face) rests at y
@@ -328,7 +331,7 @@
   }
 
   function drawStack(x, y, stack, alpha = 1, label = true) {
-    const th = L.s * TILE_H;
+    const th = L.s * TILE_H * flatK;
     for (let i = 0; i < stack.length; i++) drawTile(x, y - i * th, stack[i], 1, alpha);
     if (label) {
       const ty = y - stack.length * th;
@@ -372,7 +375,11 @@
 
   function render() {
     const t = now();
-    const s = L.s, th = s * TILE_H;
+    const dt = lastFrame ? t - lastFrame : 0;
+    lastFrame = t;
+    flatP = drag ? Math.min(1, flatP + dt / FLATTEN_MS) : Math.max(0, flatP - dt / UNFLATTEN_MS);
+    flatK = 1 - flatP * flatP * (3 - 2 * flatP);
+    const s = L.s, th = s * TILE_H * flatK;
     ctx.setTransform(L.dpr, 0, 0, L.dpr, 0, 0);
     ctx.clearRect(0, 0, L.w, L.h);
 
@@ -508,8 +515,9 @@
     if (dbgCanvas.width !== Math.round(W * L.dpr) || dbgCanvas.height !== Math.round(H * L.dpr)) {
       dbgCanvas.width = Math.round(W * L.dpr); dbgCanvas.height = Math.round(H * L.dpr);
     }
-    const mainCtx = ctx;
+    const mainCtx = ctx, mainK = flatK;
     ctx = dbgCanvas.getContext('2d');
+    flatK = 1;
     ctx.setTransform(L.dpr, 0, 0, L.dpr, 0, 0);
     ctx.clearRect(0, 0, W, H);
     const n = PALETTE.length, scale = dbgScale;
@@ -525,7 +533,7 @@
       ctx.strokeText(String(i + 1), x, y - th + 1);
       ctx.fillStyle = '#fff'; ctx.fillText(String(i + 1), x, y - th + 1);
     }
-    ctx = mainCtx;
+    ctx = mainCtx; flatK = mainK;
   }
 
   function roundRect(x, y, w, h, r) {
@@ -558,7 +566,7 @@
   canvas.addEventListener('pointerdown', (e) => {
     if (!started || over || drag) return;
     const p = pointerPos(e);
-    const th = L.s * TILE_H;
+    const th = L.s * TILE_H * flatK;
     for (let i = 0; i < 3; i++) {
       if (!tray[i]) continue;
       const sl = L.slots[i];
