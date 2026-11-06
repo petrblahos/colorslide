@@ -13,6 +13,7 @@
   const FLY_MS = 260;          // tile flight duration
   const STAGGER_MS = 60;       // delay between tiles in a transfer
   const POP_MS = 320;
+  const RUSH = 2.5;            // animation speed-up while more drops wait in the queue
   const SQ3 = Math.sqrt(3);
   const PALETTE = ['#ff5d73', '#3a86ff', '#ffd23f', '#6be08a', '#9b7bff', '#ff9a3c', '#f36bd6'];
   const START_COLORS = 3;
@@ -37,6 +38,9 @@
   let tray = [null, null, null];
   let score = 0, best = loadBest();
   let busy = false, over = false, started = false, gen = 0;
+  // All placements feed one resolver: `queue` holds cells still to check, `dropped` the
+  // player-placed cells among them that the resolver has not reached yet.
+  let queue = [], dropped = new Set(), combo = 0;
   let flyers = [], poppers = [], floaters = [];
   let drag = null, hover = null;
   let L = { w: 0, h: 0, dpr: 1, s: 20, cx: 0, cy: 0, trayY: 0, slots: [] };
@@ -137,6 +141,7 @@
     buildBoard();
     tray = [null, null, null];
     score = 0; busy = false; over = false; started = true;
+    queue = []; dropped = new Set(); combo = 0;
     flyers = []; poppers = []; floaters = [];
     drag = null; hover = null;
     refillTray();
@@ -165,23 +170,34 @@
 
   function place(cell, stack) {
     cell.stack = stack.slice();
-    resolve(cell);
+    enqueue(cell, false);
+    dropped.add(cell);
+    if (!busy) resolve();
   }
+
+  function enqueue(c, front) {
+    const i = queue.indexOf(c);
+    if (i >= 0) queue.splice(i, 1);
+    if (front) queue.unshift(c); else queue.push(c);
+  }
+
+  // Animation time scale: faster while the player has more drops waiting.
+  const pace = () => (dropped.size ? 1 / RUSH : 1);
 
   // Move `n` tiles one by one from `from` to `to` with a flight animation.
   function transfer(from, to, n, token) {
     return new Promise((res) => {
       let landed = 0;
-      const base = to.stack.length;
+      const base = to.stack.length, k = pace();
       for (let i = 0; i < n; i++) {
         setTimeout(() => {
           if (token !== gen) return;
           const color = from.stack.pop();
           flyers.push({
-            color, from, to, h0: from.stack.length, h1: base + i, t0: now(),
+            color, from, to, h0: from.stack.length, h1: base + i, t0: now(), dur: FLY_MS * k,
             land() { to.stack.push(color); if (++landed === n) res(); },
           });
-        }, i * STAGGER_MS);
+        }, i * STAGGER_MS * k);
       }
     });
   }
@@ -189,29 +205,25 @@
   function clearTop(cell, n, token) {
     return new Promise((res) => {
       let done = 0;
+      const k = pace();
       for (let i = 0; i < n; i++) {
         setTimeout(() => {
           if (token !== gen) return;
           const color = cell.stack.pop();
-          poppers.push({ color, cell, h: cell.stack.length, t0: now() });
-          if (++done === n) setTimeout(res, POP_MS * 0.6);
-        }, i * 35);
+          poppers.push({ color, cell, h: cell.stack.length, t0: now(), dur: POP_MS * k });
+          if (++done === n) setTimeout(res, POP_MS * 0.6 * k);
+        }, i * 35 * k);
       }
     });
   }
 
-  async function resolve(start) {
+  async function resolve() {
     const token = gen;
     busy = true;
-    const queue = [start];
-    const enqueue = (c, front) => {
-      const i = queue.indexOf(c);
-      if (i >= 0) queue.splice(i, 1);
-      if (front) queue.unshift(c); else queue.push(c);
-    };
-    let combo = 0, guard = 0;
-    while (queue.length && guard++ < 500) {
+    let guard = 0;
+    while (queue.length && guard++ < 5000) {
       const c = queue.shift();
+      dropped.delete(c);
       if (!c.stack.length) continue;
       const color = top(c);
       const nbs = neighbors(c).filter((n) => n.stack.length && top(n) === color);
@@ -250,7 +262,7 @@
       enqueue(target, true);
     }
     busy = false;
-    refillTray();
+    combo = 0;
     checkGameOver();
   }
 
@@ -353,7 +365,7 @@
     hexPath(p.x, p.y, s * 0.95);
     ctx.fillStyle = highlighted ? 'rgba(255,210,120,0.35)' : 'rgba(255,255,255,0.07)';
     ctx.fill();
-    ctx.strokeStyle = highlighted ? 'rgba(255,210,120,0.9)' : 'rgba(255,255,255,0.14)';
+    ctx.strokeStyle = highlighted ? '#fff' : 'rgba(255,255,255,0.14)';
     ctx.lineWidth = Math.max(1, s * 0.04);
     ctx.stroke();
   }
@@ -366,7 +378,7 @@
 
     // advance flyers first so landing tiles are in stacks before drawing
     for (let i = flyers.length - 1; i >= 0; i--) {
-      if (t - flyers[i].t0 >= FLY_MS) { const f = flyers[i]; flyers.splice(i, 1); f.land(); }
+      if (t - flyers[i].t0 >= flyers[i].dur) { const f = flyers[i]; flyers.splice(i, 1); f.land(); }
     }
 
     for (const c of drawOrder) drawSocket(c, c === hover);
@@ -407,7 +419,7 @@
         if (c.blocked || c.stack.length) continue;
         const p = cellPos(c), on = c === hover;
         hexPath(p.x, p.y, s * 0.95);
-        ctx.strokeStyle = on ? 'rgba(255,210,120,0.95)' : 'rgba(255,255,255,0.6)';
+        ctx.strokeStyle = on ? '#fff' : 'rgba(255,255,255,0.6)';
         ctx.lineWidth = Math.max(1.5, s * (on ? 0.07 : 0.045));
         ctx.stroke();
       }
@@ -422,7 +434,7 @@
 
     // popping tiles (cleared)
     for (let i = poppers.length - 1; i >= 0; i--) {
-      const pp = poppers[i], k = (t - pp.t0) / POP_MS;
+      const pp = poppers[i], k = (t - pp.t0) / pp.dur;
       if (k >= 1) { poppers.splice(i, 1); continue; }
       const p = cellPos(pp.cell);
       drawTile(p.x, p.y - pp.h * th - k * s * 0.8, pp.color, 1 + k * 0.5, 1 - k);
@@ -430,7 +442,7 @@
 
     // flying tiles
     for (const f of flyers) {
-      const k = Math.min(1, (t - f.t0) / FLY_MS);
+      const k = Math.min(1, (t - f.t0) / f.dur);
       const e = k < 0.5 ? 2 * k * k : 1 - Math.pow(-2 * k + 2, 2) / 2;
       const a = cellPos(f.from), b = cellPos(f.to);
       const x = a.x + (b.x - a.x) * e;
@@ -449,7 +461,7 @@
       hexPath(sl.x, sl.y, s * 0.95);
       ctx.fillStyle = 'rgba(0,0,0,0.2)'; ctx.fill();
       if (tray[i] && !(drag && drag.slot === i)) {
-        drawStack(sl.x, sl.y, tray[i], busy ? 0.6 : 1);
+        drawStack(sl.x, sl.y, tray[i]);
       }
     }
 
@@ -544,7 +556,7 @@
   }
 
   canvas.addEventListener('pointerdown', (e) => {
-    if (!started || busy || over || drag) return;
+    if (!started || over || drag) return;
     const p = pointerPos(e);
     const th = L.s * TILE_H;
     for (let i = 0; i < 3; i++) {
@@ -577,11 +589,12 @@
   function endDrag() {
     if (!drag) return;
     updateHover();
-    if (hover && !busy && !over) {
+    if (hover && !over) {
       const stack = drag.stack;
       tray[drag.slot] = null;
       const target = hover;
       drag = null; hover = null;
+      refillTray();
       place(target, stack);
     } else {
       drag = null; hover = null;
