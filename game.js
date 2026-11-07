@@ -98,14 +98,19 @@
   // ---------- Board ----------
   function buildBoard() {
     cells = []; cellMap = new Map();
+    // Random mode grows the hexagon: the outer columns get one more cell at the top and
+    // bottom, the second columns one more at the bottom (25 cells).
+    const big = mode === 'obstacles';
     for (let q = -RADIUS; q <= RADIUS; q++) {
-      for (let r = Math.max(-RADIUS, -q - RADIUS); r <= Math.min(RADIUS, -q + RADIUS); r++) {
+      // screen row is r + q/2, so a larger r is always lower on screen
+      const [top, bottom] = !big ? [0, 0] : Math.abs(q) === 2 ? [1, 1] : Math.abs(q) === 1 ? [0, 1] : [0, 0];
+      for (let r = Math.max(-RADIUS, -q - RADIUS) - top; r <= Math.min(RADIUS, -q + RADIUS) + bottom; r++) {
         const c = { q, r, blocked: false, stack: [] };
         cells.push(c); cellMap.set(q + ',' + r, c);
       }
     }
-    // Obstacles mode: a few random blocked cells (never the center)
-    const nBlocked = mode === 'obstacles' ? randInt(1, 2) : 0;
+    // Random mode: 6-10 missing cells (never the center)
+    const nBlocked = big ? randInt(6, 10) : 0;
     const pool = cells.filter((c) => !(c.q === 0 && c.r === 0));
     for (let i = 0; i < nBlocked; i++) pool.splice(rand(pool.length), 1)[0].blocked = true;
     drawOrder = cells.slice().sort((a, b) => (a.r + a.q / 2) - (b.r + b.q / 2) || a.q - b.q);
@@ -154,6 +159,7 @@
   function newGame() {
     gen++;
     buildBoard();
+    resize();
     tray = [null, null, null];
     score = 0; busy = false; over = false; started = true;
     queue = []; dropped = new Set(); combo = 0;
@@ -445,15 +451,18 @@
     canvas.width = Math.round(L.w * L.dpr);
     canvas.height = Math.round(L.h * L.dpr);
     layer.width = canvas.width; layer.height = canvas.height;
-    const halfBoard = RADIUS * SQ3 * Y_SCALE + SQ3 / 2 * Y_SCALE; // in units of s
+    // vertical extent of the board in rows (r + q/2); the random board reaches lower
+    const rows = cells.map((c) => c.r + c.q / 2);
+    const yMin = Math.min(...rows), yMax = Math.max(...rows);
+    const halfBoard = (yMax - yMin) / 2 * SQ3 * Y_SCALE + SQ3 / 2 * Y_SCALE; // in units of s
     const totalH = 1.6 + 2 * halfBoard + 1.0 + 2.6 + 0.6;
     const s = Math.max(8, Math.min(L.w / (RADIUS * 3 + 2.1), L.h / totalH));
     L.s = s;
     const used = totalH * s;
     const top0 = (L.h - used) / 2;
     L.cx = L.w / 2;
-    L.cy = top0 + 1.6 * s + halfBoard * s;
-    L.trayY = L.cy + halfBoard * s + 1.0 * s + 2.0 * s;
+    L.cy = top0 + 1.6 * s + halfBoard * s - (yMin + yMax) / 2 * SQ3 * Y_SCALE * s;
+    L.trayY = top0 + 1.6 * s + 2 * halfBoard * s + 1.0 * s + 2.0 * s;
     const gap = Math.min(L.w / 3.2, 3.6 * s);
     L.slots = [-1, 0, 1].map((i) => ({ x: L.cx + i * gap, y: L.trayY }));
   }
@@ -516,23 +525,7 @@
 
   function drawSocket(c, highlighted) {
     const p = cellPos(c), s = L.s;
-    if (c.blocked) {
-      // light gray slab so disabled cells stand out against the dark board
-      hexPath(p.x, p.y + s * 0.12, s * 0.92); ctx.fillStyle = '#7d808c'; ctx.fill();
-      hexPath(p.x, p.y, s * 0.92);
-      const g = ctx.createLinearGradient(p.x, p.y - s, p.x, p.y + s);
-      g.addColorStop(0, '#e4e5ea'); g.addColorStop(1, '#b9bbc4');
-      ctx.fillStyle = g; ctx.fill();
-      ctx.strokeStyle = 'rgba(255,255,255,0.6)'; ctx.lineWidth = Math.max(1, s * 0.03); ctx.stroke();
-      // cross mark
-      const k = s * 0.28;
-      ctx.strokeStyle = 'rgba(70,74,90,0.55)'; ctx.lineWidth = Math.max(1.5, s * 0.08); ctx.lineCap = 'round';
-      ctx.beginPath();
-      ctx.moveTo(p.x - k, p.y - k * Y_SCALE); ctx.lineTo(p.x + k, p.y + k * Y_SCALE);
-      ctx.moveTo(p.x + k, p.y - k * Y_SCALE); ctx.lineTo(p.x - k, p.y + k * Y_SCALE);
-      ctx.stroke(); ctx.lineCap = 'butt';
-      return;
-    }
+    if (c.blocked) return; // blocked cells are holes in the board
     hexPath(p.x, p.y, s * 0.95);
     ctx.fillStyle = highlighted ? 'rgba(255,210,120,0.35)' : 'rgba(255,255,255,0.07)';
     ctx.fill();
