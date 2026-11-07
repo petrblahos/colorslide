@@ -466,6 +466,7 @@
     const top0 = (L.h - used) / 2;
     L.cx = L.w / 2;
     L.my = (yMin + yMax) / 2;  // middle row; the board stretches around it while dragging
+    L.half = halfBoard * s;    // untilted half height of the board, for the drag tilt
     L.cy = top0 + 1.6 * s + halfBoard * s - L.my * SQ3 * Y_SCALE * s;
     L.trayY = top0 + 1.6 * s + 2 * halfBoard * s + 1.0 * s + 2.0 * s;
     const gap = Math.min(L.w / 3.2, 3.6 * s);
@@ -547,9 +548,14 @@
     autoTick(t);
     flatP = drag ? Math.min(1, flatP + dt / FLATTEN_MS) : Math.max(0, flatP - dt / UNFLATTEN_MS);
     flatK = 1 - flatP * flatP * (3 - 2 * flatP);
-    // finger above the tray panel (drag.y - drag.oy is the pointer position)
-    const outOfTray = drag && tiltOnDrag && drag.y - drag.oy < L.trayY - 2.0 * L.s;
-    tiltP = outOfTray ? Math.min(1, tiltP + dt / FLATTEN_MS) : Math.max(0, tiltP - dt / UNFLATTEN_MS);
+    // While dragging, tilt follows the stack: 0 at the board's bottom edge, 1 from its
+    // middle upwards (measured on the untilted board). After release it eases back to 0.
+    if (drag && tiltOnDrag) {
+      const mid = L.cy + L.my * SQ3 * Y_SCALE * L.s;
+      tiltP = Math.min(1, Math.max(0, 1 - (drag.y - mid) / L.half));
+    } else {
+      tiltP = Math.max(0, tiltP - dt / UNFLATTEN_MS);
+    }
     yScale = Y_SCALE + (1 - Y_SCALE) * tiltP * tiltP * (3 - 2 * tiltP);
     const s = L.s, th = s * TILE_H * flatK;
     ctx.setTransform(L.dpr, 0, 0, L.dpr, 0, 0);
