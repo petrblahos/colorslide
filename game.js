@@ -541,6 +541,20 @@
     ctx.stroke();
   }
 
+  // Nested rings, one per color run: the bottom run is the outer ring, each run above it
+  // is drawn inside the previous one.
+  function drawRunRings(x, y, stack) {
+    const s = L.s, ow = Math.max(3, s * 0.12);
+    ctx.lineWidth = ow;
+    let r = s * 0.95;
+    for (let i = 0; i < stack.length; i++) {
+      if (i > 0 && stack[i] === stack[i - 1]) continue;
+      hexPath(x, y, Math.max(r, s * 0.2));
+      ctx.strokeStyle = SHADES[stack[i]].base; ctx.stroke();
+      r -= ow * 1.4;
+    }
+  }
+
   function render() {
     const t = now();
     const dt = lastFrame ? t - lastFrame : 0;
@@ -585,20 +599,10 @@
     }
     ctx = mainCtx;
     if (fade) {
-      // outline each occupied cell with nested rings, one per color run: the bottom run is the
-      // outer ring, each run above it is drawn inside the previous one
-      const ow = Math.max(3, s * 0.12);
-      ctx.lineWidth = ow;
       for (const c of drawOrder) {
         if (!c.stack.length) continue;
         const p = cellPos(c);
-        let r = s * 0.95;
-        for (let i = 0; i < c.stack.length; i++) {
-          if (i > 0 && c.stack[i] === c.stack[i - 1]) continue;
-          hexPath(p.x, p.y, Math.max(r, s * 0.2));
-          ctx.strokeStyle = SHADES[c.stack[i]].base; ctx.stroke();
-          r -= ow * 1.4;
-        }
+        drawRunRings(p.x, p.y, c.stack);
       }
       for (const c of drawOrder) {
         if (c.blocked || c.stack.length) continue;
@@ -665,7 +669,10 @@
     }
 
     // dragged stack
-    if (drag) drawStack(drag.x, drag.y, drag.stack, 0.95);
+    if (drag) {
+      drawStack(drag.x, drag.y, drag.stack, 0.95);
+      if (flatP >= 1) drawRunRings(drag.x, drag.y, drag.stack); // once fully flattened
+    }
     if (autoMove) drawStack(autoMove.x, autoMove.y, autoMove.stack);
 
     if (DEBUG) drawPaletteColumn();
