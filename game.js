@@ -55,6 +55,7 @@
   let flatP = 0, flatK = 1, lastFrame = 0; // flatten progress (0..1) and resulting height factor
   let yScale = Y_SCALE;                      // drawn vertical squash: eases to 1 (top-down) while dragging
   let tiltOnDrag = true;                     // Tilt button: whether dragging straightens the board
+  let tiltP = 0;                             // straighten progress (0..1), runs once the finger leaves the tray
   let L = { w: 0, h: 0, dpr: 1, s: 20, cx: 0, cy: 0, trayY: 0, slots: [] };
 
   // ---------- Helpers ----------
@@ -545,9 +546,11 @@
     lastFrame = t;
     autoTick(t);
     flatP = drag ? Math.min(1, flatP + dt / FLATTEN_MS) : Math.max(0, flatP - dt / UNFLATTEN_MS);
-    const ease = flatP * flatP * (3 - 2 * flatP);
-    flatK = 1 - ease;
-    yScale = tiltOnDrag ? Y_SCALE + (1 - Y_SCALE) * ease : Y_SCALE;
+    flatK = 1 - flatP * flatP * (3 - 2 * flatP);
+    // finger above the tray panel (drag.y - drag.oy is the pointer position)
+    const outOfTray = drag && tiltOnDrag && drag.y - drag.oy < L.trayY - 2.0 * L.s;
+    tiltP = outOfTray ? Math.min(1, tiltP + dt / FLATTEN_MS) : Math.max(0, tiltP - dt / UNFLATTEN_MS);
+    yScale = Y_SCALE + (1 - Y_SCALE) * tiltP * tiltP * (3 - 2 * tiltP);
     const s = L.s, th = s * TILE_H * flatK;
     ctx.setTransform(L.dpr, 0, 0, L.dpr, 0, 0);
     ctx.clearRect(0, 0, L.w, L.h);
