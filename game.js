@@ -22,7 +22,7 @@
   const POINTS_PER_COLOR = 100;
   const DIRS = [[1, 0], [1, -1], [0, -1], [-1, 0], [-1, 1], [0, 1]];
   const BEST_KEY = 'colorslide.best';
-  const MODE_KEY = 'colorslide.mode';   // 'classic' | 'obstacles', last mode played
+  const MODE_KEY = 'colorslide.mode';   // 'classic' | 'obstacles' | 'max', last mode played
   const COUNTDOWN_S = 10;
   const DEBUG = new URLSearchParams(location.search).get('debug') === '1';
 
@@ -39,7 +39,7 @@
   const autoBtn = document.getElementById('autoBtn');
   const modeOverlay = document.getElementById('modeOverlay');
   const countEl = document.getElementById('countdown');
-  const modeBtns = { classic: document.getElementById('classicBtn'), obstacles: document.getElementById('obstaclesBtn') };
+  const modeBtns = { classic: document.getElementById('classicBtn'), obstacles: document.getElementById('obstaclesBtn'), max: document.getElementById('maxBtn') };
 
   // ---------- State ----------
   let cells = [], cellMap = new Map(), drawOrder = [];
@@ -77,7 +77,7 @@
     try { return parseInt(localStorage.getItem(BEST_KEY), 10) || 0; } catch (e) { return 0; }
   }
   function loadMode() {
-    try { return localStorage.getItem(MODE_KEY) === 'obstacles' ? 'obstacles' : 'classic'; } catch (e) { return 'classic'; }
+    try { const m = localStorage.getItem(MODE_KEY); return Object.hasOwn(modeBtns, m || "") ? m : 'classic'; } catch (e) { return 'classic'; }
   }
   function saveMode() {
     try { localStorage.setItem(MODE_KEY, mode); } catch (e) { /* ignore */ }
@@ -98,9 +98,9 @@
   // ---------- Board ----------
   function buildBoard() {
     cells = []; cellMap = new Map();
-    // Random mode grows the hexagon: the outer columns get one more cell at the top and
-    // bottom, the second columns one more at the bottom (25 cells).
-    const big = mode === 'obstacles';
+    // Random and Max modes grow the hexagon: the outer columns get one more cell at the top
+    // and bottom, the second columns one more at the bottom (25 cells).
+    const big = mode !== 'classic';
     for (let q = -RADIUS; q <= RADIUS; q++) {
       // screen row is r + q/2, so a larger r is always lower on screen
       const [top, bottom] = !big ? [0, 0] : Math.abs(q) === 2 ? [1, 1] : Math.abs(q) === 1 ? [0, 1] : [0, 0];
@@ -110,7 +110,7 @@
       }
     }
     // Random mode: 6-10 missing cells (never the center)
-    const nBlocked = big ? randInt(6, 10) : 0;
+    const nBlocked = mode === 'obstacles' ? randInt(6, 10) : 0;
     const pool = cells.filter((c) => !(c.q === 0 && c.r === 0));
     for (let i = 0; i < nBlocked; i++) pool.splice(rand(pool.length), 1)[0].blocked = true;
     drawOrder = cells.slice().sort((a, b) => (a.r + a.q / 2) - (b.r + b.q / 2) || a.q - b.q);
