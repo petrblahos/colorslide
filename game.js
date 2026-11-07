@@ -37,6 +37,7 @@
   const overInfoEl = document.getElementById('overInfo');
   const finalScoreEl = document.getElementById('finalScore');
   const autoBtn = document.getElementById('autoBtn');
+  const tiltBtn = document.getElementById('tiltBtn');
   const modeOverlay = document.getElementById('modeOverlay');
   const countEl = document.getElementById('countdown');
   const modeBtns = { classic: document.getElementById('classicBtn'), obstacles: document.getElementById('obstaclesBtn') };
@@ -52,6 +53,8 @@
   let flyers = [], poppers = [], floaters = [];
   let drag = null, hover = null;
   let flatP = 0, flatK = 1, lastFrame = 0; // flatten progress (0..1) and resulting height factor
+  let yScale = Y_SCALE;                      // drawn vertical squash: eases to 1 (top-down) while dragging
+  let tiltOnDrag = true;                     // Tilt button: whether dragging straightens the board
   let L = { w: 0, h: 0, dpr: 1, s: 20, cx: 0, cy: 0, trayY: 0, slots: [] };
 
   // ---------- Helpers ----------
@@ -461,14 +464,16 @@
     const used = totalH * s;
     const top0 = (L.h - used) / 2;
     L.cx = L.w / 2;
-    L.cy = top0 + 1.6 * s + halfBoard * s - (yMin + yMax) / 2 * SQ3 * Y_SCALE * s;
+    L.my = (yMin + yMax) / 2;  // middle row; the board stretches around it while dragging
+    L.cy = top0 + 1.6 * s + halfBoard * s - L.my * SQ3 * Y_SCALE * s;
     L.trayY = top0 + 1.6 * s + 2 * halfBoard * s + 1.0 * s + 2.0 * s;
     const gap = Math.min(L.w / 3.2, 3.6 * s);
     L.slots = [-1, 0, 1].map((i) => ({ x: L.cx + i * gap, y: L.trayY }));
   }
 
   function cellPos(c) {
-    return { x: L.cx + L.s * 1.5 * c.q, y: L.cy + L.s * SQ3 * (c.r + c.q / 2) * Y_SCALE };
+    const row = c.r + c.q / 2;
+    return { x: L.cx + L.s * 1.5 * c.q, y: L.cy + L.s * SQ3 * ((row - L.my) * yScale + L.my * Y_SCALE) };
   }
 
   // ---------- Drawing ----------
@@ -477,7 +482,7 @@
     const pts = [];
     for (let i = 0; i < 6; i++) {
       const a = Math.PI / 3 * i + rot;
-      pts.push([x + r * Math.cos(a), y + r * Math.sin(a) * Y_SCALE]);
+      pts.push([x + r * Math.cos(a), y + r * Math.sin(a) * yScale]);
     }
     const cr = r * round;
     ctx.beginPath();
@@ -500,7 +505,7 @@
     ctx.lineWidth = Math.max(1, s * 0.03); ctx.strokeStyle = sh.edge; ctx.stroke();
     // top face
     hexPath(x, y, r);
-    const g = ctx.createLinearGradient(x, y - r * Y_SCALE, x, y + r * Y_SCALE);
+    const g = ctx.createLinearGradient(x, y - r * yScale, x, y + r * yScale);
     g.addColorStop(0, sh.light); g.addColorStop(1, sh.base);
     ctx.fillStyle = g; ctx.fill();
     ctx.strokeStyle = 'rgba(255,255,255,0.35)'; ctx.lineWidth = Math.max(1, s * 0.025); ctx.stroke();
@@ -540,7 +545,9 @@
     lastFrame = t;
     autoTick(t);
     flatP = drag ? Math.min(1, flatP + dt / FLATTEN_MS) : Math.max(0, flatP - dt / UNFLATTEN_MS);
-    flatK = 1 - flatP * flatP * (3 - 2 * flatP);
+    const ease = flatP * flatP * (3 - 2 * flatP);
+    flatK = 1 - ease;
+    yScale = tiltOnDrag ? Y_SCALE + (1 - Y_SCALE) * ease : Y_SCALE;
     const s = L.s, th = s * TILE_H * flatK;
     ctx.setTransform(L.dpr, 0, 0, L.dpr, 0, 0);
     ctx.clearRect(0, 0, L.w, L.h);
@@ -678,9 +685,9 @@
     if (dbgCanvas.width !== Math.round(W * L.dpr) || dbgCanvas.height !== Math.round(H * L.dpr)) {
       dbgCanvas.width = Math.round(W * L.dpr); dbgCanvas.height = Math.round(H * L.dpr);
     }
-    const mainCtx = ctx, mainK = flatK;
+    const mainCtx = ctx, mainK = flatK, mainY = yScale;
     ctx = dbgCanvas.getContext('2d');
-    flatK = 1;
+    flatK = 1; yScale = Y_SCALE;
     ctx.setTransform(L.dpr, 0, 0, L.dpr, 0, 0);
     ctx.clearRect(0, 0, W, H);
     const n = PALETTE.length, scale = dbgScale;
@@ -696,7 +703,7 @@
       ctx.strokeText(String(i + 1), x, y - th + 1);
       ctx.fillStyle = '#fff'; ctx.fillText(String(i + 1), x, y - th + 1);
     }
-    ctx = mainCtx; flatK = mainK;
+    ctx = mainCtx; flatK = mainK; yScale = mainY;
   }
 
   function roundRect(x, y, w, h, r) {
@@ -719,7 +726,7 @@
     let bestC = null, bestD = Infinity;
     for (const c of cells) {
       const p = cellPos(c);
-      const dx = x - p.x, dy = (y - p.y) / Y_SCALE;
+      const dx = x - p.x, dy = (y - p.y) / yScale;
       const d = Math.hypot(dx, dy);
       if (d < bestD) { bestD = d; bestC = c; }
     }
@@ -776,6 +783,11 @@
 
   document.getElementById('newGame').addEventListener('click', () => openModePicker('new'));
   autoBtn.addEventListener('click', () => setAuto(!auto));
+  tiltBtn.addEventListener('click', () => {
+    tiltOnDrag = !tiltOnDrag;
+    tiltBtn.classList.toggle('on', tiltOnDrag);
+    tiltBtn.setAttribute('aria-pressed', String(tiltOnDrag));
+  });
   const clearBestOverlay = document.getElementById('clearBestOverlay');
   document.getElementById('bestStat').addEventListener('click', () => clearBestOverlay.classList.remove('hidden'));
   document.getElementById('clearBestNo').addEventListener('click', () => clearBestOverlay.classList.add('hidden'));
