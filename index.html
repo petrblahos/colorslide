@@ -17,7 +17,10 @@
 <body>
   <div id="app">
     <header>
-      <h1>Color<span>slide</span></h1>
+      <div class="title">
+        <h1>Color<span>slide</span></h1>
+        <div id="version"></div>
+      </div>
       <div class="stats">
         <div class="stat"><div class="label">Score</div><div class="value" id="score">0</div></div>
         <div class="stat clickable" id="bestStat" role="button" tabindex="0" title="Clear high score"><div class="label">Best</div><div class="value" id="best">0</div></div>
@@ -64,6 +67,11 @@
     // Offline support + install prompt (only works over http/https, not file://).
     if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
       navigator.serviceWorker.register('sw.js').catch(() => {});
+      // Show the version from the active cache name (colorslide-vNN in sw.js).
+      navigator.serviceWorker.ready.then(() => caches.keys()).then((keys) => {
+        const k = keys.find((k) => k.startsWith('colorslide-'));
+        if (k) document.getElementById('version').textContent = k.slice('colorslide-'.length);
+      }).catch(() => {});
     }
     let installEvent = null;
     const installBtn = document.getElementById('installBtn');
