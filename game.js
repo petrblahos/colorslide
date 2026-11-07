@@ -22,6 +22,8 @@
   const POINTS_PER_COLOR = 100;
   const DIRS = [[1, 0], [1, -1], [0, -1], [-1, 0], [-1, 1], [0, 1]];
   const BEST_KEY = 'colorslide.best';
+  const MODE_KEY = 'colorslide.mode';   // 'classic' | 'obstacles', last mode played
+  const COUNTDOWN_S = 10;
   const DEBUG = new URLSearchParams(location.search).get('debug') === '1';
 
   // ---------- DOM ----------
@@ -31,15 +33,18 @@
   const layerCtx = layer.getContext('2d');
   const scoreEl = document.getElementById('score');
   const bestEl = document.getElementById('best');
-  const startOverlay = document.getElementById('startOverlay');
-  const overOverlay = document.getElementById('overOverlay');
+  const introEl = document.getElementById('intro');
+  const overInfoEl = document.getElementById('overInfo');
   const finalScoreEl = document.getElementById('finalScore');
   const autoBtn = document.getElementById('autoBtn');
+  const modeOverlay = document.getElementById('modeOverlay');
+  const countEl = document.getElementById('countdown');
+  const modeBtns = { classic: document.getElementById('classicBtn'), obstacles: document.getElementById('obstaclesBtn') };
 
   // ---------- State ----------
   let cells = [], cellMap = new Map(), drawOrder = [];
   let tray = [null, null, null];
-  let score = 0, best = loadBest();
+  let score = 0, best = loadBest(), mode = loadMode();
   let busy = false, over = false, started = false, gen = 0;
   // All placements feed one resolver: `queue` holds cells still to check, `dropped` the
   // player-placed cells among them that the resolver has not reached yet.
@@ -71,6 +76,12 @@
   function loadBest() {
     try { return parseInt(localStorage.getItem(BEST_KEY), 10) || 0; } catch (e) { return 0; }
   }
+  function loadMode() {
+    try { return localStorage.getItem(MODE_KEY) === 'obstacles' ? 'obstacles' : 'classic'; } catch (e) { return 'classic'; }
+  }
+  function saveMode() {
+    try { localStorage.setItem(MODE_KEY, mode); } catch (e) { /* ignore */ }
+  }
   function saveBest() {
     try { localStorage.setItem(BEST_KEY, String(best)); } catch (e) { /* ignore */ }
   }
@@ -93,8 +104,8 @@
         cells.push(c); cellMap.set(q + ',' + r, c);
       }
     }
-    // a few random blocked cells (never the center)
-    const nBlocked = randInt(0, 2);
+    // Obstacles mode: a few random blocked cells (never the center)
+    const nBlocked = mode === 'obstacles' ? randInt(1, 2) : 0;
     const pool = cells.filter((c) => !(c.q === 0 && c.r === 0));
     for (let i = 0; i < nBlocked; i++) pool.splice(rand(pool.length), 1)[0].blocked = true;
     drawOrder = cells.slice().sort((a, b) => (a.r + a.q / 2) - (b.r + b.q / 2) || a.q - b.q);
@@ -150,8 +161,31 @@
     drag = null; hover = null; autoMove = null; plan = [];
     refillTray();
     updateScore(false);
-    startOverlay.classList.add('hidden');
-    overOverlay.classList.add('hidden');
+  }
+
+  // Mode picker: the last played mode is pre-selected and starts when the countdown ends;
+  // tapping either button starts that mode right away. `kind` picks the extra info shown:
+  // 'start' (rules), 'over' (final score) or 'new' (nothing).
+  let countdown = null;
+  function openModePicker(kind) {
+    clearInterval(countdown);
+    let left = COUNTDOWN_S;
+    countEl.textContent = left;
+    for (const [k, b] of Object.entries(modeBtns)) b.classList.toggle('sel', k === mode);
+    introEl.classList.toggle('hidden', kind !== 'start');
+    overInfoEl.classList.toggle('hidden', kind !== 'over');
+    modeOverlay.style.setProperty('--countdown', COUNTDOWN_S + 's');
+    modeOverlay.classList.remove('hidden');
+    countdown = setInterval(() => {
+      if (--left > 0) countEl.textContent = left;
+      else startMode(mode);
+    }, 1000);
+  }
+  function startMode(m) {
+    clearInterval(countdown); countdown = null;
+    modeOverlay.classList.add('hidden');
+    mode = m; saveMode();
+    newGame();
   }
 
   function updateScore(bump) {
@@ -169,7 +203,7 @@
     if (cells.some((c) => !c.blocked && c.stack.length === 0)) return;
     over = true;
     finalScoreEl.textContent = score;
-    setTimeout(() => overOverlay.classList.remove('hidden'), 400);
+    setTimeout(() => openModePicker('over'), 400);
   }
 
   function place(cell, stack) {
@@ -360,6 +394,7 @@
   // board is not flattened or faded meanwhile.
   let auto = false, plan = [], autoMove = null, autoIdle = 0;
   function autoTick(t) {
+    if (countdown) return; // mode picker open
     if (over) { autoMove = null; plan = []; }
     if (autoMove) {
       const m = autoMove, b = cellPos(m.cell), lift = L.s * AUTO_LIFT;
@@ -399,7 +434,7 @@
     plan = [];
     autoBtn.classList.toggle('on', on);
     autoBtn.setAttribute('aria-pressed', String(on));
-    if (on && (!started || over)) newGame();
+    if (on && (!started || over)) startMode(mode);
   }
 
   // ---------- Layout ----------
@@ -746,10 +781,17 @@
   canvas.addEventListener('pointerup', endDrag);
   canvas.addEventListener('pointercancel', () => { drag = null; hover = null; });
 
-  document.getElementById('newGame').addEventListener('click', newGame);
+  document.getElementById('newGame').addEventListener('click', () => openModePicker('new'));
   autoBtn.addEventListener('click', () => setAuto(!auto));
-  document.getElementById('startBtn').addEventListener('click', newGame);
-  document.getElementById('againBtn').addEventListener('click', newGame);
+  const clearBestOverlay = document.getElementById('clearBestOverlay');
+  document.getElementById('bestStat').addEventListener('click', () => clearBestOverlay.classList.remove('hidden'));
+  document.getElementById('clearBestNo').addEventListener('click', () => clearBestOverlay.classList.add('hidden'));
+  document.getElementById('clearBestYes').addEventListener('click', () => {
+    best = 0; saveBest();
+    bestEl.textContent = best;
+    clearBestOverlay.classList.add('hidden');
+  });
+  for (const [k, b] of Object.entries(modeBtns)) b.addEventListener('click', () => startMode(k));
   window.addEventListener('resize', resize);
 
   // ---------- Boot ----------
@@ -757,6 +799,7 @@
   bestEl.textContent = best;
   resize();
   requestAnimationFrame(render);
+  openModePicker('start');
 
   // ?debug=1: sliders for tuning tilt and tile thickness live.
   if (DEBUG) {
