@@ -55,7 +55,7 @@
   let flatP = 0, flatK = 1, lastFrame = 0; // flatten progress (0..1) and resulting height factor
   let yScale = Y_SCALE;                      // drawn vertical squash: eases to 1 (top-down) while dragging
   let tiltOnDrag = true;                     // Tilt button: whether dragging straightens the board
-  let tiltP = 0;                             // straighten progress (0..1), runs once the finger leaves the tray
+  let tiltP = 0;                             // straighten progress (0..1), follows the dragged stack's height on the board
   let L = { w: 0, h: 0, dpr: 1, s: 20, cx: 0, cy: 0, trayY: 0, slots: [] };
 
   // ---------- Helpers ----------
