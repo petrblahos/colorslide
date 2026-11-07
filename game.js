@@ -280,6 +280,7 @@
   const AUTO_LIFT = 1.5;       // hover height above the target cell while waiting, in cell sizes
   const EVAL_EMPTY = 3;        // leaf score per empty cell
   const EVAL_MIX = 1;          // leaf penalty per color change inside a stack
+  const EVAL_CENTER = 0.01;    // tie-breaker per stack placed on the central line (q = 0)
   const GAME_OVER = -1e6;
 
   function simResolve(st, nb, start) {
@@ -333,6 +334,7 @@
         for (const i of open) if (st[i].length) v -= EVAL_MIX * (runCount(st[i]) - 1);
       }
       if (v !== null) {
+        for (const m of path) if (m.cell.q === 0) v += EVAL_CENTER;
         if (v > bestV) { bestV = v; best = path; }
         return;
       }
