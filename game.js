@@ -22,6 +22,7 @@
   const POINTS_PER_COLOR = 100;
   const DIRS = [[1, 0], [1, -1], [0, -1], [-1, 0], [-1, 1], [0, 1]];
   const BEST_KEY = 'colorslide.best';
+  const TILT_KEY = 'colorslide.tilt';   // '1' when the Tilt button is on
   const MODE_KEY = 'colorslide.mode';   // 'classic' | 'obstacles' | 'max', last mode played
   const COUNTDOWN_S = 10;
   const DEBUG = new URLSearchParams(location.search).get('debug') === '1';
@@ -54,7 +55,7 @@
   let drag = null, hover = null;
   let flatP = 0, flatK = 1, lastFrame = 0; // flatten progress (0..1) and resulting height factor
   let yScale = Y_SCALE;                      // drawn vertical squash: eases to 1 (top-down) while dragging
-  let tiltOnDrag = true;                     // Tilt button: whether dragging straightens the board
+  let tiltOnDrag = loadTilt();               // Tilt button: whether dragging straightens the board (off by default)
   let tiltP = 0;                             // straighten progress (0..1), follows the dragged stack's height on the board
   let L = { w: 0, h: 0, dpr: 1, s: 20, cx: 0, cy: 0, trayY: 0, slots: [] };
 
@@ -79,6 +80,9 @@
 
   function loadBest() {
     try { return parseInt(localStorage.getItem(BEST_KEY), 10) || 0; } catch (e) { return 0; }
+  }
+  function loadTilt() {
+    try { return localStorage.getItem(TILT_KEY) === '1'; } catch (e) { return false; }
   }
   function loadMode() {
     try { const m = localStorage.getItem(MODE_KEY); return Object.hasOwn(modeBtns, m || "") ? m : 'classic'; } catch (e) { return 'classic'; }
@@ -799,11 +803,14 @@
 
   document.getElementById('newGame').addEventListener('click', () => openModePicker('new'));
   autoBtn.addEventListener('click', () => setAuto(!auto));
-  tiltBtn.addEventListener('click', () => {
-    tiltOnDrag = !tiltOnDrag;
-    tiltBtn.classList.toggle('on', tiltOnDrag);
-    tiltBtn.setAttribute('aria-pressed', String(tiltOnDrag));
-  });
+  function setTilt(on) {
+    tiltOnDrag = on;
+    tiltBtn.classList.toggle('on', on);
+    tiltBtn.setAttribute('aria-pressed', String(on));
+    try { localStorage.setItem(TILT_KEY, on ? '1' : '0'); } catch (e) { /* ignore */ }
+  }
+  tiltBtn.addEventListener('click', () => setTilt(!tiltOnDrag));
+  setTilt(tiltOnDrag);
   const clearBestOverlay = document.getElementById('clearBestOverlay');
   document.getElementById('bestStat').addEventListener('click', () => clearBestOverlay.classList.remove('hidden'));
   document.getElementById('clearBestNo').addEventListener('click', () => clearBestOverlay.classList.add('hidden'));
