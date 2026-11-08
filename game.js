@@ -23,7 +23,7 @@
   const DIRS = [[1, 0], [1, -1], [0, -1], [-1, 0], [-1, 1], [0, 1]];
   const BEST_KEY = 'colorslide.best';
   const TILT_KEY = 'colorslide.tilt';   // '1' when the Tilt button is on
-  const MODE_KEY = 'colorslide.mode';   // 'classic' | 'obstacles' | 'max', last mode played
+  const MODE_KEY = 'colorslide.mode';   // 'classic' | 'obstacles' | 'max' | 'puzzle5/6/7', last mode played
   const COUNTDOWN_S = 10;
   const DEBUG = new URLSearchParams(location.search).get('debug') === '1';
 
@@ -41,7 +41,11 @@
   const tiltBtn = document.getElementById('tiltBtn');
   const modeOverlay = document.getElementById('modeOverlay');
   const countEl = document.getElementById('countdown');
-  const modeBtns = { classic: document.getElementById('classicBtn'), obstacles: document.getElementById('obstaclesBtn'), max: document.getElementById('maxBtn') };
+  const modeBtns = { classic: document.getElementById('classicBtn'), obstacles: document.getElementById('obstaclesBtn'), max: document.getElementById('maxBtn'),
+    puzzle5: document.getElementById('puzzle5Btn'), puzzle6: document.getElementById('puzzle6Btn'), puzzle7: document.getElementById('puzzle7Btn') };
+  // Puzzle modes: 'puzzleN' uses N colors for the starting stacks; 0 for other modes
+  const puzzleColors = () => (mode.startsWith('puzzle') ? Number(mode.slice(6)) : 0);
+  const overTitleEl = document.getElementById('overTitle');
 
   // ---------- State ----------
   let cells = [], cellMap = new Map(), drawOrder = [];
@@ -106,7 +110,7 @@
   // ---------- Board ----------
   function buildBoard() {
     cells = []; cellMap = new Map();
-    // Random and Max modes grow the hexagon: the outer columns get one more cell at the top
+    // Random, Max and Puzzle modes grow the hexagon: the outer columns get one more cell at the top
     // and bottom, the second columns one more at the bottom (25 cells).
     const big = mode !== 'classic';
     for (let q = -RADIUS; q <= RADIUS; q++) {
@@ -147,16 +151,40 @@
     // split n into `runs` positive parts
     const lens = new Array(runs).fill(1);
     for (let i = runs; i < n; i++) lens[rand(runs)]++;
-    const k = activeColors();
+    // Puzzle mode only deals colors still on the board
+    let pool = puzzleColors() ? [...new Set(cells.flatMap((c) => c.stack))] : [];
+    if (!pool.length) pool = [...Array(activeColors()).keys()];
+    const k = pool.length;
     const stack = [];
     let prev = -1;
     for (const len of lens) {
       let col;
-      do { col = rand(k); } while (col === prev && k > 1);
+      do { col = pool[rand(k)]; } while (col === prev && k > 1);
       prev = col;
       for (let i = 0; i < len; i++) stack.push(col);
     }
     return stack;
+  }
+
+  // Puzzle mode start: 9-tall stacks of 3 runs (puzzleColors() colors) on either the center
+  // column or the ring around the center; neighbouring tops differ, so nothing slides yet.
+  function setupPuzzle() {
+    const center = cellMap.get('0,0');
+    const spots = Math.random() < 0.5 ? cells.filter((c) => c.q === 0) : neighbors(center);
+    for (const c of spots) {
+      do {
+        const lens = [1, 1, 1];
+        for (let i = 3; i < 9; i++) lens[rand(3)]++;
+        c.stack = [];
+        let prev = -1;
+        for (const len of lens) {
+          let col;
+          do { col = rand(puzzleColors()); } while (col === prev);
+          prev = col;
+          for (let i = 0; i < len; i++) c.stack.push(col);
+        }
+      } while (neighbors(c).some((n) => n.stack.length && top(n) === top(c)));
+    }
   }
 
   function refillTray() {
@@ -167,6 +195,7 @@
   function newGame() {
     gen++;
     buildBoard();
+    if (puzzleColors()) setupPuzzle();
     resize();
     tray = [null, null, null];
     score = 0; busy = false; over = false; started = true;
@@ -214,8 +243,12 @@
   }
 
   function checkGameOver() {
-    if (cells.some((c) => !c.blocked && c.stack.length === 0)) return;
+    // Puzzle win: the board is empty or holds a single one-color stack
+    const stacks = cells.filter((c) => c.stack.length);
+    const solved = puzzleColors() > 0 && (stacks.length === 0 || (stacks.length === 1 && runCount(stacks[0].stack) === 1));
+    if (!solved && cells.some((c) => !c.blocked && c.stack.length === 0)) return;
     over = true;
+    overTitleEl.textContent = solved ? 'Solved!' : 'Board full!';
     finalScoreEl.textContent = score;
     setTimeout(() => openModePicker('over'), 400);
   }
