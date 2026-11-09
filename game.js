@@ -680,11 +680,6 @@
     ctx = mainCtx;
     if (fade) {
       for (const c of drawOrder) {
-        if (!c.stack.length) continue;
-        const p = cellPos(c);
-        drawRunRings(p.x, p.y, c.stack);
-      }
-      for (const c of drawOrder) {
         if (c.blocked || c.stack.length) continue;
         const p = cellPos(c), on = c === hover;
         hexPath(p.x, p.y, s * 0.95);
@@ -698,6 +693,12 @@
       ctx.globalAlpha = FADE_ALPHA;
       ctx.drawImage(layer, 0, 0);
       ctx.restore();
+      // run rings on top of the faded stacks so their colors are not tinted
+      for (const c of drawOrder) {
+        if (!c.stack.length) continue;
+        const p = cellPos(c);
+        drawRunRings(p.x, p.y, c.stack);
+      }
       if (hover) { const p = cellPos(hover); drawStack(p.x, p.y, drag.stack, 0.45, false); }
     }
 
