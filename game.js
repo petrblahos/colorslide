@@ -23,7 +23,9 @@
   const DIRS = [[1, 0], [1, -1], [0, -1], [-1, 0], [-1, 1], [0, 1]];
   const BEST_KEY = 'colorslide.best';
   const TILT_KEY = 'colorslide.tilt';   // '1' when the Tilt button is on
-  const MODE_KEY = 'colorslide.mode';   // 'classic' | 'obstacles' | 'max' | 'puzzle5/6/7', last mode played
+  const MODE_KEY = 'colorslide.mode';   // 'classic' | 'obstacles' | 'max' | 'puzzle5/6/7' | 'daily', last mode played
+  const DAILY_KEY = 'colorslide.daily'; // {"day":"2026-11-09","best":42}: fewest steps for that day's daily puzzle
+  const DAILY_COLORS = 5;
   const COUNTDOWN_S = 10;
   const DEBUG = new URLSearchParams(location.search).get('debug') === '1';
 
@@ -37,20 +39,26 @@
   const introEl = document.getElementById('intro');
   const overInfoEl = document.getElementById('overInfo');
   const finalScoreEl = document.getElementById('finalScore');
+  const scoreLabelEl = document.getElementById('scoreLabel');
+  const finalLabelEl = document.getElementById('finalLabel');
+  const bestStatEl = document.getElementById('bestStat');
   const autoBtn = document.getElementById('autoBtn');
   const tiltBtn = document.getElementById('tiltBtn');
   const modeOverlay = document.getElementById('modeOverlay');
   const countEl = document.getElementById('countdown');
   const modeBtns = { classic: document.getElementById('classicBtn'), obstacles: document.getElementById('obstaclesBtn'), max: document.getElementById('maxBtn'),
-    puzzle5: document.getElementById('puzzle5Btn'), puzzle6: document.getElementById('puzzle6Btn'), puzzle7: document.getElementById('puzzle7Btn') };
-  // Puzzle modes: 'puzzleN' uses N colors for the starting stacks; 0 for other modes
-  const puzzleColors = () => (mode.startsWith('puzzle') ? Number(mode.slice(6)) : 0);
+    puzzle5: document.getElementById('puzzle5Btn'), puzzle6: document.getElementById('puzzle6Btn'), puzzle7: document.getElementById('puzzle7Btn'),
+    daily: document.getElementById('dailyBtn') };
+  // Puzzle modes: 'puzzleN' uses N colors for the starting stacks, 'daily' DAILY_COLORS; 0 for other modes
+  const puzzleColors = () => (mode === 'daily' ? DAILY_COLORS : mode.startsWith('puzzle') ? Number(mode.slice(6)) : 0);
   const overTitleEl = document.getElementById('overTitle');
 
   // ---------- State ----------
   let cells = [], cellMap = new Map(), drawOrder = [];
   let tray = [null, null, null];
   let score = 0, best = loadBest(), mode = loadMode();
+  let gameDay = localDay();                  // local date the current game started, 'YYYY-MM-DD'
+  let rng = mulberry32(Math.random() * 2 ** 32); // all gameplay randomness; reseeded by newGame()
   let busy = false, over = false, started = false, gen = 0;
   // All placements feed one resolver: `queue` holds cells still to check, `dropped` the
   // player-placed cells among them that the resolver has not reached yet.
@@ -64,7 +72,7 @@
   let L = { w: 0, h: 0, dpr: 1, s: 20, cx: 0, cy: 0, trayY: 0, slots: [] };
 
   // ---------- Helpers ----------
-  const rand = (n) => Math.floor(Math.random() * n);
+  const rand = (n) => Math.floor(rng() * n);
   const randInt = (a, b) => a + rand(b - a + 1);
   const top = (c) => c.stack[c.stack.length - 1];
   const now = () => performance.now();
@@ -80,6 +88,27 @@
     let n = 0;
     for (let i = 0; i < stack.length; i++) if (i === 0 || stack[i] !== stack[i - 1]) n++;
     return n;
+  }
+
+  // Small seedable PRNG, returns floats in [0, 1)
+  function mulberry32(seed) {
+    return function () {
+      seed |= 0; seed = (seed + 0x6D2B79F5) | 0;
+      let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+  function localDay() {
+    const d = new Date(), pad = (n) => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  }
+  // Fewest steps for gameDay's daily puzzle, 0 if not solved yet
+  function loadDailyBest() {
+    try { const d = JSON.parse(localStorage.getItem(DAILY_KEY)); return d && d.day === gameDay ? d.best : 0; } catch (e) { return 0; }
+  }
+  function saveDailyBest(n) {
+    try { localStorage.setItem(DAILY_KEY, JSON.stringify({ day: gameDay, best: n })); } catch (e) { /* ignore */ }
   }
 
   function loadBest() {
@@ -145,7 +174,7 @@
 
   function makeStack() {
     const n = randInt(2, 6);
-    const roll = Math.random();
+    const roll = rng();
     let runs = roll < 0.35 ? 1 : roll < 0.8 ? 2 : 3;
     runs = Math.min(runs, n);
     // split n into `runs` positive parts
@@ -170,7 +199,7 @@
   // column or the ring around the center; neighbouring tops differ, so nothing slides yet.
   function setupPuzzle() {
     const center = cellMap.get('0,0');
-    const spots = Math.random() < 0.5 ? cells.filter((c) => c.q === 0) : neighbors(center);
+    const spots = rng() < 0.5 ? cells.filter((c) => c.q === 0) : neighbors(center);
     for (const c of spots) {
       do {
         const lens = [1, 1, 1];
@@ -194,6 +223,8 @@
   // ---------- Game flow ----------
   function newGame() {
     gen++;
+    gameDay = localDay();
+    rng = mulberry32(mode === 'daily' ? Number(gameDay.replaceAll('-', '')) : Math.random() * 2 ** 32);
     buildBoard();
     if (puzzleColors()) setupPuzzle();
     resize();
@@ -203,6 +234,9 @@
     flyers = []; poppers = []; floaters = [];
     drag = null; hover = null; autoMove = null; plan = [];
     refillTray();
+    // Puzzle modes count placed stacks ("steps") instead of points; only the daily one keeps a best
+    scoreLabelEl.textContent = puzzleColors() ? 'Steps' : 'Score';
+    finalLabelEl.textContent = puzzleColors() ? 'Steps' : 'Final score';
     updateScore(false);
   }
 
@@ -233,13 +267,18 @@
 
   function updateScore(bump) {
     scoreEl.textContent = score;
-    if (score > best) { best = score; saveBest(); }
-    bestEl.textContent = best;
+    if (!puzzleColors() && score > best) { best = score; saveBest(); }
+    showBest();
     if (bump) {
       scoreEl.classList.remove('bump');
       void scoreEl.offsetWidth;
       scoreEl.classList.add('bump');
     }
+  }
+
+  function showBest() {
+    bestStatEl.classList.toggle('hidden', puzzleColors() > 0 && mode !== 'daily');
+    bestEl.textContent = mode === 'daily' ? (loadDailyBest() || '–') : best;
   }
 
   function checkGameOver() {
@@ -248,6 +287,7 @@
     const solved = puzzleColors() > 0 && (stacks.length === 0 || (stacks.length === 1 && runCount(stacks[0].stack) === 1));
     if (!solved && cells.some((c) => !c.blocked && c.stack.length === 0)) return;
     over = true;
+    if (solved && mode === 'daily' && (!loadDailyBest() || score < loadDailyBest())) { saveDailyBest(score); showBest(); }
     overTitleEl.textContent = solved ? 'Solved!' : 'Board full!';
     finalScoreEl.textContent = score;
     setTimeout(() => openModePicker('over'), 400);
@@ -255,6 +295,7 @@
 
   function place(cell, stack) {
     cell.stack = stack.slice();
+    if (puzzleColors()) { score++; updateScore(true); }
     enqueue(cell, false);
     dropped.add(cell);
     if (!busy) resolve();
@@ -339,10 +380,12 @@
         combo++;
         await clearTop(target, run, token);
         if (token !== gen) return;
-        const pts = run * combo;
-        score += pts;
-        floaters.push({ cell: target, text: combo > 1 ? `+${pts}  x${combo}` : `+${pts}`, t0: now() });
-        updateScore(true);
+        if (!puzzleColors()) {
+          const pts = run * combo;
+          score += pts;
+          floaters.push({ cell: target, text: combo > 1 ? `+${pts}  x${combo}` : `+${pts}`, t0: now() });
+          updateScore(true);
+        }
       }
       enqueue(target, true);
     }
@@ -848,8 +891,9 @@
   document.getElementById('bestStat').addEventListener('click', () => clearBestOverlay.classList.remove('hidden'));
   document.getElementById('clearBestNo').addEventListener('click', () => clearBestOverlay.classList.add('hidden'));
   document.getElementById('clearBestYes').addEventListener('click', () => {
-    best = 0; saveBest();
-    bestEl.textContent = best;
+    if (mode === 'daily') saveDailyBest(0);
+    else { best = 0; saveBest(); }
+    showBest();
     clearBestOverlay.classList.add('hidden');
   });
   for (const [k, b] of Object.entries(modeBtns)) b.addEventListener('click', () => startMode(k));
@@ -857,7 +901,7 @@
 
   // ---------- Boot ----------
   buildBoard();
-  bestEl.textContent = best;
+  showBest();
   resize();
   requestAnimationFrame(render);
   openModePicker('start');

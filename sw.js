@@ -1,6 +1,6 @@
 /* Service worker: caches the whole game so it runs offline once installed.
    Bump CACHE whenever any file changes so phones pick up the new version. */
-const CACHE = 'colorslide-v31';
+const CACHE = 'colorslide-v33';
 const FILES = [
   './',
   './index.html',
