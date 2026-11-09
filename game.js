@@ -25,7 +25,6 @@
   const TILT_KEY = 'colorslide.tilt';   // '1' when the Tilt button is on
   const MODE_KEY = 'colorslide.mode';   // 'classic' | 'obstacles' | 'max' | 'puzzle5/6/7' | 'daily', last mode played
   const DAILY_KEY = 'colorslide.daily'; // {"day":"2026-11-09","best":42}: fewest steps for that day's daily puzzle
-  const DAILY_COLORS = 5;
   const COUNTDOWN_S = 10;
   const DEBUG = new URLSearchParams(location.search).get('debug') === '1';
 
@@ -49,14 +48,15 @@
   const modeBtns = { classic: document.getElementById('classicBtn'), obstacles: document.getElementById('obstaclesBtn'), max: document.getElementById('maxBtn'),
     puzzle5: document.getElementById('puzzle5Btn'), puzzle6: document.getElementById('puzzle6Btn'), puzzle7: document.getElementById('puzzle7Btn'),
     daily: document.getElementById('dailyBtn') };
-  // Puzzle modes: 'puzzleN' uses N colors for the starting stacks, 'daily' DAILY_COLORS; 0 for other modes
-  const puzzleColors = () => (mode === 'daily' ? DAILY_COLORS : mode.startsWith('puzzle') ? Number(mode.slice(6)) : 0);
+  // Puzzle modes: 'puzzleN' uses N colors for the starting stacks, 'daily' dailyColors; 0 for other modes
+  const puzzleColors = () => (mode === 'daily' ? dailyColors : mode.startsWith('puzzle') ? Number(mode.slice(6)) : 0);
   const overTitleEl = document.getElementById('overTitle');
 
   // ---------- State ----------
   let cells = [], cellMap = new Map(), drawOrder = [];
   let tray = [null, null, null];
   let score = 0, best = loadBest(), mode = loadMode();
+  let dailyColors = 5;                       // color count of today's daily puzzle (5-7), picked by newGame()
   let gameDay = localDay();                  // local date the current game started, 'YYYY-MM-DD'
   let rng = mulberry32(Math.random() * 2 ** 32); // all gameplay randomness; reseeded by newGame()
   let busy = false, over = false, started = false, gen = 0;
@@ -225,6 +225,7 @@
     gen++;
     gameDay = localDay();
     rng = mulberry32(mode === 'daily' ? Number(gameDay.replaceAll('-', '')) : Math.random() * 2 ** 32);
+    if (mode === 'daily') dailyColors = 5 + rand(3); // the daily is one of Puzzle 5/6/7
     buildBoard();
     if (puzzleColors()) setupPuzzle();
     resize();
