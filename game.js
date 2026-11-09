@@ -393,6 +393,9 @@
     busy = false;
     combo = 0;
     checkGameOver();
+    // Puzzle modes refill only once the board has settled, so the new stacks only use
+    // colors that survived the merges and clears
+    if (!over) refillTray();
   }
 
   // ---------- Auto play ----------
@@ -501,7 +504,7 @@
         if (k >= 1) {
           autoMove = null;
           tray[m.slot] = null;
-          refillTray();
+          if (!puzzleColors()) refillTray();
           place(m.cell, m.stack);
         }
       }
@@ -870,7 +873,7 @@
       tray[drag.slot] = null;
       const target = hover;
       drag = null; hover = null;
-      refillTray();
+      if (!puzzleColors()) refillTray();
       place(target, stack);
     } else {
       drag = null; hover = null;
