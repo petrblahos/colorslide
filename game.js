@@ -372,6 +372,13 @@
           enqueue(n, false);
         }
       } else {
+        // the other neighbours join through this stack, so nothing matching is left behind
+        for (const n of nbs) {
+          if (n === target) continue;
+          await transfer(n, c, topRun(n.stack), token);
+          if (token !== gen) return;
+          enqueue(n, false);
+        }
         await transfer(c, target, topRun(c.stack), token);
         if (token !== gen) return;
         enqueue(c, false);
@@ -436,6 +443,7 @@
       if (target === c) {
         for (const n of nbs) { move(n, c); enq(n, false); }
       } else {
+        for (const n of nbs) if (n !== target) { move(n, c); enq(n, false); }
         move(c, target); enq(c, false);
       }
       const run = topRun(st[target]);
