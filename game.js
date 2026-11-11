@@ -17,7 +17,8 @@
   const UNFLATTEN_MS = 100;    // ...and spring back when it ends
   const RUSH = 2.5;            // animation speed-up while more drops wait in the queue
   const SQ3 = Math.sqrt(3);
-  const PALETTE = ['#ff5d73', '#3a86ff', '#ffd23f', '#6be08a', '#a61be4', '#ff9a3c', '#8c909c'];
+  // const PALETTE = ['#ff5d73', '#3a86ff', '#ffd23f', '#6be08a', '#a61be4', '#ff9a3c', '#8c909c'];
+  const PALETTE = ['#E5484D', '#FFD23F', '#3B6FE8', '#3FB950', '#E668C6', '#39D0D8', '#B8BCC4'];
   const START_COLORS = 3;
   const POINTS_PER_COLOR = 100;
   const DIRS = [[1, 0], [1, -1], [0, -1], [-1, 0], [-1, 1], [0, 1]];
@@ -25,7 +26,7 @@
   const TILT_KEY = 'colorslide.tilt';   // '1' when the Tilt button is on
   const MODE_KEY = 'colorslide.mode';   // 'classic' | 'obstacles' | 'max' | 'puzzle5/6/7' | 'daily', last mode played
   const DAILY_KEY = 'colorslide.daily'; // {"day":"2026-11-09","best":42}: fewest steps for that day's daily puzzle
-  const DAILY_COLORS = 6;
+  const DAILY_COLORS = 5;
   const COUNTDOWN_S = 10;
   const DEBUG = new URLSearchParams(location.search).get('debug') === '1';
 
