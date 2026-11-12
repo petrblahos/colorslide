@@ -27,7 +27,6 @@
   const MODE_KEY = 'colorslide.mode';   // 'classic' | 'obstacles' | 'max' | 'puzzle5/6/7' | 'daily', last mode played
   const DAILY_KEY = 'colorslide.daily'; // {"day":"2026-11-09","best":42}: fewest steps for that day's daily puzzle
   const DAILY_COLORS = 5;
-  const COUNTDOWN_S = 10;
   const DEBUG = new URLSearchParams(location.search).get('debug') === '1';
 
   // ---------- DOM ----------
@@ -46,7 +45,6 @@
   const autoBtn = document.getElementById('autoBtn');
   const tiltBtn = document.getElementById('tiltBtn');
   const modeOverlay = document.getElementById('modeOverlay');
-  const countEl = document.getElementById('countdown');
   const modeBtns = { classic: document.getElementById('classicBtn'), obstacles: document.getElementById('obstaclesBtn'), max: document.getElementById('maxBtn'),
     puzzle5: document.getElementById('puzzle5Btn'), puzzle6: document.getElementById('puzzle6Btn'), puzzle7: document.getElementById('puzzle7Btn'),
     daily: document.getElementById('dailyBtn') };
@@ -250,33 +248,22 @@
     updateScore(false);
   }
 
-  // Mode picker: the last played mode is pre-selected and starts when the countdown ends;
-  // tapping either button starts that mode right away. `kind` picks the extra info shown:
+  // Mode picker: the last played mode is pre-selected (highlighted);
+  // tapping a button starts that mode. `kind` picks the extra info shown:
   // 'start' (rules), 'over' (final score) or 'new' (nothing).
-  let countdown = null;
   function openModePicker(kind) {
-    clearInterval(countdown);
-    let left = COUNTDOWN_S;
-    countEl.textContent = left;
     for (const [k, b] of Object.entries(modeBtns)) b.classList.toggle('sel', k === mode);
     introEl.classList.toggle('hidden', kind !== 'start');
     overInfoEl.classList.toggle('hidden', kind !== 'over');
     againBtn.classList.toggle('hidden', kind !== 'over' || !mode.startsWith('puzzle'));
-    modeOverlay.style.setProperty('--countdown', COUNTDOWN_S + 's');
     modeOverlay.classList.remove('hidden');
-    countdown = setInterval(() => {
-      if (--left > 0) countEl.textContent = left;
-      else startMode(mode);
-    }, 1000);
   }
   function startMode(m) {
-    clearInterval(countdown); countdown = null;
     modeOverlay.classList.add('hidden');
     mode = m; saveMode();
     newGame();
   }
   function playAgain() {
-    clearInterval(countdown); countdown = null;
     modeOverlay.classList.add('hidden');
     newGame(true);
   }
@@ -512,7 +499,7 @@
   // board is not flattened or faded meanwhile.
   let auto = false, plan = [], autoMove = null, autoIdle = 0;
   function autoTick(t) {
-    if (countdown) return; // mode picker open
+    if (!modeOverlay.classList.contains('hidden')) return; // mode picker open
     if (over) { autoMove = null; plan = []; }
     if (autoMove) {
       const m = autoMove, b = cellPos(m.cell), lift = L.s * AUTO_LIFT;
