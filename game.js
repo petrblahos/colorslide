@@ -53,6 +53,7 @@
   // Puzzle modes: 'puzzleN' uses N colors for the starting stacks, 'daily' DAILY_COLORS; 0 for other modes
   const puzzleColors = () => (mode === 'daily' ? DAILY_COLORS : mode.startsWith('puzzle') ? Number(mode.slice(6)) : 0);
   const overTitleEl = document.getElementById('overTitle');
+  const againBtn = document.getElementById('againBtn');
 
   // ---------- State ----------
   let cells = [], cellMap = new Map(), drawOrder = [];
@@ -60,6 +61,9 @@
   let score = 0, best = loadBest(), mode = loadMode();
   let gameDay = localDay();                  // local date the current game started, 'YYYY-MM-DD'
   let rng = mulberry32(Math.random() * 2 ** 32); // all gameplay randomness; reseeded by newGame()
+  // Seed of the current game and, for the puzzle modes, the fewest steps it was solved in
+  // (0 if not yet); kept only until the next new game, so "Same again" can replay it.
+  let seed = 0, seedBest = 0;
   let busy = false, over = false, started = false, gen = 0;
   // All placements feed one resolver: `queue` holds cells still to check, `dropped` the
   // player-placed cells among them that the resolver has not reached yet.
@@ -223,10 +227,13 @@
   }
 
   // ---------- Game flow ----------
-  function newGame() {
+  // `same` replays the current seed instead of drawing a new one
+  function newGame(same) {
     gen++;
     gameDay = localDay();
-    rng = mulberry32(mode === 'daily' ? Number(gameDay.replaceAll('-', '')) : Math.random() * 2 ** 32);
+    if (mode === 'daily') seed = Number(gameDay.replaceAll('-', ''));
+    else if (!same) { seed = Math.random() * 2 ** 32; seedBest = 0; }
+    rng = mulberry32(seed);
     buildBoard();
     if (puzzleColors()) setupPuzzle();
     resize();
@@ -236,7 +243,8 @@
     flyers = []; poppers = []; floaters = [];
     drag = null; hover = null; autoMove = null; plan = [];
     refillTray();
-    // Puzzle modes count placed stacks ("steps") instead of points; only the daily one keeps a best
+    // Puzzle modes count placed stacks ("steps") instead of points; the daily one keeps a best
+    // for the day, the others only for the current seed
     scoreLabelEl.textContent = puzzleColors() ? 'Steps' : 'Score';
     finalLabelEl.textContent = puzzleColors() ? 'Steps' : 'Final score';
     updateScore(false);
@@ -253,6 +261,7 @@
     for (const [k, b] of Object.entries(modeBtns)) b.classList.toggle('sel', k === mode);
     introEl.classList.toggle('hidden', kind !== 'start');
     overInfoEl.classList.toggle('hidden', kind !== 'over');
+    againBtn.classList.toggle('hidden', kind !== 'over' || !mode.startsWith('puzzle'));
     modeOverlay.style.setProperty('--countdown', COUNTDOWN_S + 's');
     modeOverlay.classList.remove('hidden');
     countdown = setInterval(() => {
@@ -265,6 +274,11 @@
     modeOverlay.classList.add('hidden');
     mode = m; saveMode();
     newGame();
+  }
+  function playAgain() {
+    clearInterval(countdown); countdown = null;
+    modeOverlay.classList.add('hidden');
+    newGame(true);
   }
 
   function updateScore(bump) {
@@ -279,8 +293,8 @@
   }
 
   function showBest() {
-    bestStatEl.classList.toggle('hidden', puzzleColors() > 0 && mode !== 'daily');
-    bestEl.textContent = mode === 'daily' ? (loadDailyBest() || '–') : best;
+    bestStatEl.classList.toggle('hidden', puzzleColors() > 0 && mode !== 'daily' && !seedBest);
+    bestEl.textContent = mode === 'daily' ? (loadDailyBest() || '–') : puzzleColors() ? seedBest : best;
   }
 
   function checkGameOver() {
@@ -290,6 +304,7 @@
     if (!solved && cells.some((c) => !c.blocked && c.stack.length === 0)) return;
     over = true;
     if (solved && mode === 'daily' && (!loadDailyBest() || score < loadDailyBest())) { saveDailyBest(score); showBest(); }
+    if (solved && mode !== 'daily' && (!seedBest || score < seedBest)) { seedBest = score; showBest(); }
     overTitleEl.textContent = solved ? 'Solved!' : 'Board full!';
     finalScoreEl.textContent = score;
     setTimeout(() => openModePicker('over'), 400);
@@ -907,11 +922,13 @@
   document.getElementById('clearBestNo').addEventListener('click', () => clearBestOverlay.classList.add('hidden'));
   document.getElementById('clearBestYes').addEventListener('click', () => {
     if (mode === 'daily') saveDailyBest(0);
+    else if (puzzleColors()) seedBest = 0;
     else { best = 0; saveBest(); }
     showBest();
     clearBestOverlay.classList.add('hidden');
   });
   for (const [k, b] of Object.entries(modeBtns)) b.addEventListener('click', () => startMode(k));
+  againBtn.addEventListener('click', playAgain);
   window.addEventListener('resize', resize);
 
   // ---------- Boot ----------
