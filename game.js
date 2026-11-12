@@ -245,6 +245,9 @@
     // for the day, the others only for the current seed
     scoreLabelEl.textContent = puzzleColors() ? 'Steps' : 'Score';
     finalLabelEl.textContent = puzzleColors() ? 'Steps' : 'Final score';
+    // no auto-play in puzzle modes
+    if (puzzleColors()) setAuto(false);
+    autoBtn.classList.toggle('hidden', puzzleColors() > 0);
     updateScore(false);
   }
 
@@ -255,7 +258,7 @@
     for (const [k, b] of Object.entries(modeBtns)) b.classList.toggle('sel', k === mode);
     introEl.classList.toggle('hidden', kind !== 'start');
     overInfoEl.classList.toggle('hidden', kind !== 'over');
-    againBtn.classList.toggle('hidden', kind !== 'over' || !mode.startsWith('puzzle'));
+    againBtn.classList.toggle('hidden', kind === 'start' || !mode.startsWith('puzzle'));
     modeOverlay.classList.remove('hidden');
   }
   function startMode(m) {
@@ -747,7 +750,7 @@
       ctx.fillStyle = 'rgba(0,0,0,0.2)'; ctx.fill();
       if (tray[i] && !(drag && drag.slot === i) && !(autoMove && autoMove.slot === i)) {
         drawStack(sl.x, sl.y, tray[i]);
-        if (drag) drawRunRings(sl.x, sl.y, tray[i]);
+        if (drag && flatP >= 1) drawRunRings(sl.x, sl.y, tray[i]); // together with the dragged stack
       }
     }
 
