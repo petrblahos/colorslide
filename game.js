@@ -39,6 +39,7 @@
   const introEl = document.getElementById('intro');
   const overInfoEl = document.getElementById('overInfo');
   const finalScoreEl = document.getElementById('finalScore');
+  const oldBestEl = document.getElementById('oldBest');
   const scoreLabelEl = document.getElementById('scoreLabel');
   const finalLabelEl = document.getElementById('finalLabel');
   const bestStatEl = document.getElementById('bestStat');
@@ -293,6 +294,9 @@
     const solved = puzzleColors() > 0 && (stacks.length === 0 || (stacks.length === 1 && runCount(stacks[0].stack) === 1));
     if (!solved && cells.some((c) => !c.blocked && c.stack.length === 0)) return;
     over = true;
+    // a beaten puzzle best is shown scratched out next to the new one
+    const prev = mode === 'daily' ? loadDailyBest() : seedBest;
+    oldBestEl.textContent = solved && prev && score < prev ? prev : '';
     if (solved && mode === 'daily' && (!loadDailyBest() || score < loadDailyBest())) { saveDailyBest(score); showBest(); }
     if (solved && mode !== 'daily' && (!seedBest || score < seedBest)) { seedBest = score; showBest(); }
     overTitleEl.textContent = solved ? 'Solved!' : 'Board full!';

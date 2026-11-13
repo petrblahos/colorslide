@@ -83,6 +83,8 @@ h1 span { color: var(--accent); }
 .card h2 { margin: 0 0 8px; font-size: 30px; }
 .card p { color: var(--muted); line-height: 1.45; margin: 8px 0; }
 .card .final { font-size: 48px; font-weight: 900; color: var(--accent); margin: 4px 0 8px; }
+.card .final s { color: var(--muted); margin-right: 12px; }
+.card .final s:empty { display: none; }
 @media (max-width: 480px) {
   header { padding: 10px 16px; gap: 6px; flex-wrap: nowrap; }
   h1 { font-size: 20px; }
